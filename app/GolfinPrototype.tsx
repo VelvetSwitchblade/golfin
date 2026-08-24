@@ -47,49 +47,49 @@ type CameraState = {
 const fairway: Surface = {
   name: "fairway",
   color: "#4fa85d",
-  drag: 0.26,
+  drag: 0.32,
   bounce: 0.48,
-  rollDrag: 0.78,
+  rollDrag: 6.3,
 };
 
 const rough: Surface = {
   name: "rough",
   color: "#2f7f44",
-  drag: 0.54,
-  bounce: 0.34,
-  rollDrag: 1.45,
+  drag: 0.95,
+  bounce: 0.26,
+  rollDrag: 8.4,
 };
 
 const heavy: Surface = {
   name: "heavy",
   color: "#226536",
-  drag: 0.82,
-  bounce: 0.2,
-  rollDrag: 2.15,
+  drag: 1.2,
+  bounce: 0.16,
+  rollDrag: 10.5,
 };
 
 const green: Surface = {
   name: "green",
   color: "#6fcf73",
-  drag: 0.18,
+  drag: 0.2,
   bounce: 0.42,
-  rollDrag: 0.52,
+  rollDrag: 3.2,
 };
 
 const bunker: Surface = {
   name: "bunker",
   color: "#d8c27a",
-  drag: 1.35,
-  bounce: 0.12,
-  rollDrag: 3.4,
+  drag: 1.8,
+  bounce: 0.08,
+  rollDrag: 13.5,
 };
 
 const tee: Surface = {
   name: "tee",
   color: "#72be72",
-  drag: 0.22,
+  drag: 0.26,
   bounce: 0.44,
-  rollDrag: 0.62,
+  rollDrag: 5.6,
 };
 
 const materials: Record<Surface["name"], Surface> = {
@@ -264,9 +264,16 @@ const goodwoodParkHole1: CourseData = {
   ],
 };
 
-const gravity = 1450;
+const gravity = 170;
 const worldWidth = 900;
 const worldHeight = 1250;
+const scorecardHoleYards = 389;
+const driverPreset = {
+  clubheadMph: 100,
+  carryYards: 238,
+  totalYards: 258,
+  flightSeconds: 4.5,
+};
 
 function orientCourse(source: CourseData): CourseData {
   const teePoint = source.holeLine[0];
@@ -305,6 +312,7 @@ function orientCourse(source: CourseData): CourseData {
 
 const course = orientCourse(goodwoodParkHole1);
 const teePoint = course.holeLine[0];
+const worldUnitsPerYard = lineLength(course.holeLine) / scorecardHoleYards;
 
 const startBall: BallState = {
   x: teePoint[0],
@@ -318,13 +326,24 @@ const startBall: BallState = {
 
 const fixedShot = {
   angle: Math.atan2(course.pin[1] - teePoint[1], course.pin[0] - teePoint[0]),
-  speed: 690,
-  loft: 390,
+  speed: (driverPreset.carryYards * worldUnitsPerYard) / driverPreset.flightSeconds,
+  loft: (gravity * driverPreset.flightSeconds) / 2,
   spin: 1.8,
 };
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
+}
+
+function lineLength(points: Array<[number, number]>) {
+  return points.reduce((total, point, index) => {
+    if (index === 0) {
+      return total;
+    }
+
+    const previous = points[index - 1];
+    return total + Math.hypot(point[0] - previous[0], point[1] - previous[1]);
+  }, 0);
 }
 
 function lerp(start: number, end: number, amount: number) {
@@ -500,15 +519,15 @@ function drawBall(
   scale: number,
   ball: BallState,
 ) {
-  const lift = ball.z * 0.34;
-  const radius = (16 + Math.min(12, ball.z * 0.018)) * scale;
-  const shadowScale = clamp(1 - ball.z / 520, 0.28, 1);
+  const lift = ball.z * 0.2;
+  const radius = (5.2 + Math.min(2.8, ball.z * 0.005)) * scale;
+  const shadowScale = clamp(1 - ball.z / 460, 0.28, 1);
   const surface = surfaceAt(ball.x, ball.y);
 
   ctx.fillStyle = surface.color;
   ctx.globalAlpha = 0.2;
   ctx.beginPath();
-  ctx.arc(sx(ball.x), sy(ball.y), 34 * scale, 0, Math.PI * 2);
+  ctx.arc(sx(ball.x), sy(ball.y), 13 * scale, 0, Math.PI * 2);
   ctx.fill();
   ctx.globalAlpha = 1;
 
@@ -613,6 +632,36 @@ function drawMiniMap(ctx: CanvasRenderingContext2D, width: number, height: numbe
   ctx.restore();
 }
 
+function drawHud(ctx: CanvasRenderingContext2D, width: number, ball: BallState) {
+  const remainingYards = Math.max(
+    0,
+    Math.hypot(ball.x - course.pin[0], ball.y - course.pin[1]) / worldUnitsPerYard,
+  );
+  const panelWidth = Math.min(360, width - 28);
+  const left = 14;
+  const top = 14;
+
+  ctx.save();
+  ctx.fillStyle = "rgba(12, 30, 18, 0.74)";
+  ctx.beginPath();
+  ctx.roundRect(left, top, panelWidth, 74, 8);
+  ctx.fill();
+
+  ctx.fillStyle = "#f8fff2";
+  ctx.font = "700 15px Arial, Helvetica, sans-serif";
+  ctx.fillText(`${course.name}  |  ${scorecardHoleYards} yd  |  Par ${course.par}`, left + 14, top + 26);
+
+  ctx.fillStyle = "rgba(248, 255, 242, 0.76)";
+  ctx.font = "700 13px Arial, Helvetica, sans-serif";
+  ctx.fillText(
+    `Driver ${driverPreset.clubheadMph} mph: ${driverPreset.carryYards} yd carry / ${driverPreset.totalYards} yd total`,
+    left + 14,
+    top + 48,
+  );
+  ctx.fillText(`${remainingYards.toFixed(0)} yd to pin`, left + 14, top + 66);
+  ctx.restore();
+}
+
 export function GolfinPrototype() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const frameRef = useRef<number | null>(null);
@@ -689,6 +738,7 @@ export function GolfinPrototype() {
       drawOverviewMarker(ctx, sx, sy, camera.zoom, ball);
     }
     drawMiniMap(ctx, width, height, ball);
+    drawHud(ctx, width, ball);
   }, []);
 
   useEffect(() => {
