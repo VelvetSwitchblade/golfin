@@ -35,6 +35,15 @@ type CourseData = {
   surfaces: CourseSurface[];
 };
 
+type CameraState = {
+  x: number;
+  y: number;
+  zoom: number;
+  targetX: number;
+  targetY: number;
+  targetZoom: number;
+};
+
 const fairway: Surface = {
   name: "fairway",
   color: "#4fa85d",
@@ -255,9 +264,51 @@ const goodwoodParkHole1: CourseData = {
   ],
 };
 
+const gravity = 1450;
+const worldWidth = 900;
+const worldHeight = 1250;
+
+function orientCourse(source: CourseData): CourseData {
+  const teePoint = source.holeLine[0];
+  const pinPoint = source.pin;
+  const vector = {
+    x: pinPoint[0] - teePoint[0],
+    y: pinPoint[1] - teePoint[1],
+  };
+  const length = Math.hypot(vector.x, vector.y);
+  const forward = { x: vector.x / length, y: vector.y / length };
+  const lateral = { x: -forward.y, y: forward.x };
+  const teeAnchor = { x: worldWidth / 2, y: worldHeight - 150 };
+  const scale = 950 / length;
+
+  const transform = ([x, y]: [number, number]): [number, number] => {
+    const relative = { x: x - teePoint[0], y: y - teePoint[1] };
+    const along = relative.x * forward.x + relative.y * forward.y;
+    const across = relative.x * lateral.x + relative.y * lateral.y;
+
+    return [
+      Number((teeAnchor.x + across * scale).toFixed(1)),
+      Number((teeAnchor.y - along * scale).toFixed(1)),
+    ];
+  };
+
+  return {
+    ...source,
+    holeLine: source.holeLine.map(transform),
+    pin: transform(source.pin),
+    surfaces: source.surfaces.map((surface) => ({
+      ...surface,
+      points: surface.points.map(transform),
+    })),
+  };
+}
+
+const course = orientCourse(goodwoodParkHole1);
+const teePoint = course.holeLine[0];
+
 const startBall: BallState = {
-  x: 902.8,
-  y: 318.2,
+  x: teePoint[0],
+  y: teePoint[1],
   z: 0,
   vx: 0,
   vy: 0,
@@ -266,18 +317,18 @@ const startBall: BallState = {
 };
 
 const fixedShot = {
-  angle: Math.atan2(347.2 - 318.2, 96 - 902.8),
-  speed: 620,
-  loft: 360,
+  angle: Math.atan2(course.pin[1] - teePoint[1], course.pin[0] - teePoint[0]),
+  speed: 690,
+  loft: 390,
   spin: 1.8,
 };
 
-const gravity = 1450;
-const worldWidth = 1000;
-const worldHeight = 620;
-
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
+}
+
+function lerp(start: number, end: number, amount: number) {
+  return start + (end - start) * amount;
 }
 
 function speed(ball: BallState) {
@@ -300,7 +351,7 @@ function pointInPolygon(x: number, y: number, polygon: Array<[number, number]>) 
 function surfaceAt(x: number, y: number): Surface {
   const priority: Surface["name"][] = ["bunker", "green", "tee", "rough", "fairway"];
   for (const type of priority) {
-    const match = goodwoodParkHole1.surfaces.find(
+    const match = course.surfaces.find(
       (surface) => surface.type === type && pointInPolygon(x, y, surface.points),
     );
     if (match) {
@@ -311,19 +362,14 @@ function surfaceAt(x: number, y: number): Surface {
   return rough;
 }
 
-function drawGrass(
+function drawSurfacePolygons(
   ctx: CanvasRenderingContext2D,
   sx: (value: number) => number,
   sy: (value: number) => number,
-  width: number,
-  height: number,
 ) {
-  ctx.fillStyle = rough.color;
-  ctx.fillRect(0, 0, width, height);
-
   const drawOrder: Surface["name"][] = ["rough", "fairway", "tee", "green", "bunker"];
   for (const type of drawOrder) {
-    for (const surface of goodwoodParkHole1.surfaces.filter((item) => item.type === type)) {
+    for (const surface of course.surfaces.filter((item) => item.type === type)) {
       ctx.fillStyle = materials[surface.type].color;
       ctx.beginPath();
       surface.points.forEach(([x, y], index) => {
@@ -337,13 +383,21 @@ function drawGrass(
       ctx.fill();
     }
   }
+}
 
-  ctx.strokeStyle = "rgba(255,255,255,0.34)";
+function drawHoleLine(
+  ctx: CanvasRenderingContext2D,
+  sx: (value: number) => number,
+  sy: (value: number) => number,
+  scale: number,
+  alpha = 0.34,
+) {
+  ctx.strokeStyle = `rgba(255,255,255,${alpha})`;
   ctx.lineCap = "round";
-  ctx.lineWidth = sx(3) - sx(0);
-  ctx.setLineDash([sx(14) - sx(0), sx(12) - sx(0)]);
+  ctx.lineWidth = 3 * scale;
+  ctx.setLineDash([14 * scale, 12 * scale]);
   ctx.beginPath();
-  goodwoodParkHole1.holeLine.forEach(([x, y], index) => {
+  course.holeLine.forEach(([x, y], index) => {
     if (index === 0) {
       ctx.moveTo(sx(x), sy(y));
     } else {
@@ -352,16 +406,54 @@ function drawGrass(
   });
   ctx.stroke();
   ctx.setLineDash([]);
+}
 
-  const [pinX, pinY] = goodwoodParkHole1.pin;
+function drawPin(
+  ctx: CanvasRenderingContext2D,
+  sx: (value: number) => number,
+  sy: (value: number) => number,
+  scale: number,
+) {
+  const [pinX, pinY] = course.pin;
   ctx.fillStyle = "#111711";
   ctx.beginPath();
-  ctx.arc(sx(pinX), sy(pinY), sx(5) - sx(0), 0, Math.PI * 2);
+  ctx.arc(sx(pinX), sy(pinY), 5 * scale, 0, Math.PI * 2);
   ctx.fill();
+
+  ctx.strokeStyle = "#f8fff2";
+  ctx.lineWidth = 2 * scale;
+  ctx.beginPath();
+  ctx.moveTo(sx(pinX), sy(pinY));
+  ctx.lineTo(sx(pinX), sy(pinY - 44));
+  ctx.stroke();
+
+  ctx.fillStyle = "#e84f42";
+  ctx.beginPath();
+  ctx.moveTo(sx(pinX), sy(pinY - 44));
+  ctx.lineTo(sx(pinX + 30), sy(pinY - 34));
+  ctx.lineTo(sx(pinX), sy(pinY - 24));
+  ctx.closePath();
+  ctx.fill();
+}
+
+function drawGrass(
+  ctx: CanvasRenderingContext2D,
+  sx: (value: number) => number,
+  sy: (value: number) => number,
+  width: number,
+  height: number,
+  scale: number,
+) {
+  ctx.fillStyle = rough.color;
+  ctx.fillRect(0, 0, width, height);
+
+  drawSurfacePolygons(ctx, sx, sy);
+  drawHoleLine(ctx, sx, sy, scale);
+  drawPin(ctx, sx, sy, scale);
 
   ctx.fillStyle = "rgba(255,255,255,0.06)";
   for (let i = -2; i < 18; i += 1) {
-    ctx.fillRect(sx(i * 76), 0, sx(18) - sx(0), height);
+    ctx.fillRect(sx(i * 76), 0, 18 * scale, height);
   }
 }
 
@@ -459,16 +551,89 @@ function drawBall(
   ctx.stroke();
 }
 
+function drawOverviewMarker(
+  ctx: CanvasRenderingContext2D,
+  sx: (value: number) => number,
+  sy: (value: number) => number,
+  scale: number,
+  ball: BallState,
+) {
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.82)";
+  ctx.lineWidth = 3 * scale;
+  ctx.beginPath();
+  ctx.arc(sx(ball.x), sy(ball.y), 34 * scale, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.fillStyle = "rgba(255, 255, 255, 0.92)";
+  ctx.beginPath();
+  ctx.moveTo(sx(ball.x), sy(ball.y - 54));
+  ctx.lineTo(sx(ball.x + 12), sy(ball.y - 30));
+  ctx.lineTo(sx(ball.x - 12), sy(ball.y - 30));
+  ctx.closePath();
+  ctx.fill();
+}
+
+function drawMiniMap(ctx: CanvasRenderingContext2D, width: number, height: number, ball: BallState) {
+  const mapWidth = Math.min(210, width * 0.3);
+  const mapHeight = Math.min(292, height * 0.36);
+  const margin = Math.max(14, Math.min(width, height) * 0.025);
+  const left = width - mapWidth - margin;
+  const top = height - mapHeight - margin;
+  const padding = 14;
+  const scale = Math.min(
+    (mapWidth - padding * 2) / worldWidth,
+    (mapHeight - padding * 2) / worldHeight,
+  );
+  const offsetX = left + (mapWidth - worldWidth * scale) / 2;
+  const offsetY = top + (mapHeight - worldHeight * scale) / 2;
+  const sx = (value: number) => offsetX + value * scale;
+  const sy = (value: number) => offsetY + value * scale;
+
+  ctx.save();
+  ctx.fillStyle = "rgba(12, 30, 18, 0.78)";
+  ctx.beginPath();
+  ctx.roundRect(left, top, mapWidth, mapHeight, 8);
+  ctx.fill();
+  ctx.clip();
+
+  ctx.fillStyle = rough.color;
+  ctx.fillRect(left, top, mapWidth, mapHeight);
+  drawSurfacePolygons(ctx, sx, sy);
+  drawHoleLine(ctx, sx, sy, scale, 0.55);
+  drawPin(ctx, sx, sy, scale);
+
+  ctx.fillStyle = "#ffffff";
+  ctx.beginPath();
+  ctx.arc(sx(ball.x), sy(ball.y), 5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "#183520";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  ctx.restore();
+}
+
 export function GolfinPrototype() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const frameRef = useRef<number | null>(null);
+  const cameraFrameRef = useRef<number | null>(null);
   const lastTimeRef = useRef<number | null>(null);
+  const movingRef = useRef(false);
+  const overviewUntilRef = useRef<number>(0);
   const ballRef = useRef<BallState>({ ...startBall });
+  const cameraRef = useRef<CameraState>({
+    x: worldWidth / 2,
+    y: worldHeight / 2,
+    zoom: 0.6,
+    targetX: worldWidth / 2,
+    targetY: worldHeight / 2,
+    targetZoom: 0.6,
+  });
   const trailRef = useRef<Array<{ x: number; y: number; z: number }>>([]);
 
   const [moving, setMoving] = useState(false);
 
-  const draw = useCallback(() => {
+  const draw = useCallback((timestamp = performance.now()) => {
     const canvas = canvasRef.current;
     if (!canvas) {
       return;
@@ -487,21 +652,55 @@ export function GolfinPrototype() {
     ctx.scale(dpr, dpr);
     const width = rect.width;
     const height = rect.height;
-    const scale = Math.min(width / worldWidth, height / worldHeight);
-    const offsetX = (width - worldWidth * scale) / 2;
-    const offsetY = (height - worldHeight * scale) / 2;
-    const sx = (value: number) => offsetX + value * scale;
-    const sy = (value: number) => offsetY + value * scale;
     const ball = ballRef.current;
+    const camera = cameraRef.current;
+    const overviewZoom = Math.min(width / worldWidth, height / worldHeight) * 0.9;
+    const detailZoom = clamp(Math.min(width, height) / 250, 1.45, 2.8);
+    const currentSpeed = speed(ball);
+    const shotZoomAmount = clamp((currentSpeed - 80) / 460, 0, 1);
 
-    drawGrass(ctx, sx, sy, width, height);
-    drawTrail(ctx, sx, sy, scale, trailRef.current);
-    drawAimGhost(ctx, sx, sy, scale, ball);
-    drawBall(ctx, sx, sy, scale, ball);
+    if (movingRef.current) {
+      camera.targetX = clamp(ball.x + ball.vx * 0.1, 80, worldWidth - 80);
+      camera.targetY = clamp(ball.y + ball.vy * 0.1, 80, worldHeight - 80);
+      camera.targetZoom = lerp(detailZoom, overviewZoom * 1.08, shotZoomAmount);
+    } else if (timestamp < overviewUntilRef.current) {
+      camera.targetX = worldWidth / 2;
+      camera.targetY = worldHeight / 2;
+      camera.targetZoom = overviewZoom;
+    } else {
+      camera.targetX = ball.x;
+      camera.targetY = ball.y;
+      camera.targetZoom = detailZoom;
+    }
+
+    camera.x = lerp(camera.x, camera.targetX, 0.08);
+    camera.y = lerp(camera.y, camera.targetY, 0.08);
+    camera.zoom = lerp(camera.zoom, camera.targetZoom, 0.08);
+
+    const sx = (value: number) => width / 2 + (value - camera.x) * camera.zoom;
+    const sy = (value: number) => height / 2 + (value - camera.y) * camera.zoom;
+    const showingOverview = camera.zoom < detailZoom * 0.62;
+
+    drawGrass(ctx, sx, sy, width, height, camera.zoom);
+    drawTrail(ctx, sx, sy, camera.zoom, trailRef.current);
+    drawAimGhost(ctx, sx, sy, camera.zoom, ball);
+    drawBall(ctx, sx, sy, camera.zoom, ball);
+    if (showingOverview) {
+      drawOverviewMarker(ctx, sx, sy, camera.zoom, ball);
+    }
+    drawMiniMap(ctx, width, height, ball);
   }, []);
 
   useEffect(() => {
-    draw();
+    overviewUntilRef.current = performance.now() + 1500;
+
+    const tick = (timestamp: number) => {
+      if (!movingRef.current) {
+        draw(timestamp);
+      }
+      cameraFrameRef.current = requestAnimationFrame(tick);
+    };
+    cameraFrameRef.current = requestAnimationFrame(tick);
 
     const resize = () => draw();
     window.addEventListener("resize", resize);
@@ -510,6 +709,9 @@ export function GolfinPrototype() {
       window.removeEventListener("resize", resize);
       if (frameRef.current) {
         cancelAnimationFrame(frameRef.current);
+      }
+      if (cameraFrameRef.current) {
+        cancelAnimationFrame(cameraFrameRef.current);
       }
     };
   }, [draw]);
@@ -572,7 +774,9 @@ export function GolfinPrototype() {
       ball.vx = 0;
       ball.vy = 0;
       ball.vz = 0;
+      movingRef.current = false;
       setMoving(false);
+      overviewUntilRef.current = timestamp + 1600;
       frameRef.current = null;
       lastTimeRef.current = null;
       return;
@@ -582,7 +786,7 @@ export function GolfinPrototype() {
   }
 
   function swing() {
-    if (moving) {
+    if (movingRef.current) {
       return;
     }
 
@@ -596,6 +800,7 @@ export function GolfinPrototype() {
     ballRef.current.vy = Math.sin(fixedShot.angle) * fixedShot.speed;
     ballRef.current.vz = fixedShot.loft;
     ballRef.current.spin = fixedShot.spin;
+    movingRef.current = true;
     setMoving(true);
     lastTimeRef.current = null;
     frameRef.current = requestAnimationFrame(step);
