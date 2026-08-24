@@ -281,6 +281,7 @@ const worldWidth = 900;
 const worldHeight = 1250;
 const roughCollarWidth = 58;
 const treeSetback = 46;
+const bunkerScale = 1.5;
 const scorecardHoleYards = 389;
 const fixedSwingMph: SwingSpeed = 100;
 const clubDefinitions: ClubDefinition[] = [
@@ -376,14 +377,20 @@ function orientCourse(source: CourseData): CourseData {
     ];
   };
 
+  const surfaces = source.surfaces.map((surface) => {
+    const points = surface.points.map(transform);
+
+    return {
+      ...surface,
+      points: surface.type === "bunker" ? scalePolygon(points, bunkerScale) : points,
+    };
+  });
+
   return {
     ...source,
     holeLine: source.holeLine.map(transform),
     pin: transform(source.pin),
-    surfaces: source.surfaces.map((surface) => ({
-      ...surface,
-      points: surface.points.map(transform),
-    })),
+    surfaces,
   };
 }
 
@@ -418,6 +425,15 @@ function lineLength(points: Array<[number, number]>) {
 
 function lerp(start: number, end: number, amount: number) {
   return start + (end - start) * amount;
+}
+
+function scalePolygon(points: Array<[number, number]>, scale: number) {
+  const center = polygonCentroid(points);
+
+  return points.map(([x, y]) => [
+    Number((center.x + (x - center.x) * scale).toFixed(1)),
+    Number((center.y + (y - center.y) * scale).toFixed(1)),
+  ] as [number, number]);
 }
 
 function seededNoise(seed: number) {
