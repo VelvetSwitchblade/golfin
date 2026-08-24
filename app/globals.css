@@ -12,6 +12,7 @@
   --yellow: #f2c94c;
   --red: #e85d55;
   --blue: #4069b2;
+}
 
 @theme inline {
   --color-background: var(--background);
@@ -492,5 +493,4 @@ input[type="range"] {
   .device-tile.host {
     grid-column: 1 / -1;
   }
-}
 }
