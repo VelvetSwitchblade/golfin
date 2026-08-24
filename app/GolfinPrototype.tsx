@@ -282,6 +282,8 @@ const worldHeight = 1250;
 const roughCollarWidth = 58;
 const treeSetback = 46;
 const bunkerScale = 1.5;
+const cupRadius = 9;
+const cupCaptureSpeed = 36;
 const scorecardHoleYards = 389;
 const fixedSwingMph: SwingSpeed = 100;
 const clubDefinitions: ClubDefinition[] = [
@@ -443,6 +445,10 @@ function seededNoise(seed: number) {
 
 function speed(ball: BallState) {
   return Math.hypot(ball.vx, ball.vy);
+}
+
+function distanceToPin(ball: BallState) {
+  return Math.hypot(ball.x - course.pin[0], ball.y - course.pin[1]);
 }
 
 function clubDistance(club: ClubDefinition) {
@@ -1071,11 +1077,8 @@ function drawMiniMap(ctx: CanvasRenderingContext2D, width: number, height: numbe
   ctx.restore();
 }
 
-function drawHud(ctx: CanvasRenderingContext2D, width: number, ball: BallState, club: ClubDefinition) {
-  const remainingYards = Math.max(
-    0,
-    Math.hypot(ball.x - course.pin[0], ball.y - course.pin[1]) / worldUnitsPerYard,
-  );
+function drawHud(ctx: CanvasRenderingContext2D, width: number, ball: BallState, club: ClubDefinition, holed: boolean) {
+  const remainingYards = Math.max(0, distanceToPin(ball) / worldUnitsPerYard);
   const panelWidth = Math.min(390, width - 28);
   const left = 14;
   const top = 14;
@@ -1103,7 +1106,7 @@ function drawHud(ctx: CanvasRenderingContext2D, width: number, ball: BallState, 
   ctx.fillStyle = "rgba(248, 255, 242, 0.76)";
   ctx.font = "700 13px Arial, Helvetica, sans-serif";
   ctx.fillText(clubLabel, left + 14, top + 48);
-  ctx.fillText(`${remainingYards.toFixed(0)} yd to pin`, left + 14, top + 66);
+  ctx.fillText(holed ? "Holed" : `${remainingYards.toFixed(0)} yd to pin`, left + 14, top + 66);
   ctx.restore();
 }
 
@@ -1115,6 +1118,7 @@ export function GolfinPrototype() {
   const movingRef = useRef(false);
   const overviewUntilRef = useRef<number>(0);
   const ballRef = useRef<BallState>({ ...startBall });
+  const holedRef = useRef(false);
   const selectedClubRef = useRef<ClubDefinition>(defaultClub);
   const cameraRef = useRef<CameraState>({
     x: worldWidth / 2,
@@ -1127,6 +1131,7 @@ export function GolfinPrototype() {
   const trailRef = useRef<Array<{ x: number; y: number; z: number }>>([]);
 
   const [moving, setMoving] = useState(false);
+  const [holed, setHoled] = useState(false);
   const [selectedClubId, setSelectedClubId] = useState(defaultClub.id);
 
   const draw = useCallback((timestamp = performance.now()) => {
@@ -1179,13 +1184,15 @@ export function GolfinPrototype() {
 
     drawGrass(ctx, sx, sy, width, height, camera.zoom);
     drawTrail(ctx, sx, sy, camera.zoom, trailRef.current);
-    drawAimGhost(ctx, sx, sy, camera.zoom, ball, selectedClubRef.current);
+    if (!holedRef.current) {
+      drawAimGhost(ctx, sx, sy, camera.zoom, ball, selectedClubRef.current);
+    }
     drawBall(ctx, sx, sy, camera.zoom, ball);
     if (showingOverview) {
       drawOverviewMarker(ctx, sx, sy, camera.zoom, ball);
     }
     drawMiniMap(ctx, width, height, ball);
-    drawHud(ctx, width, ball, selectedClubRef.current);
+    drawHud(ctx, width, ball, selectedClubRef.current, holedRef.current);
   }, []);
 
   useEffect(() => {
@@ -1259,6 +1266,26 @@ export function GolfinPrototype() {
       }
     }
 
+    const canDrop = ball.z === 0 && Math.abs(ball.vz) < 1 && speed(ball) < cupCaptureSpeed && distanceToPin(ball) <= cupRadius;
+    if (canDrop) {
+      ball.x = course.pin[0];
+      ball.y = course.pin[1];
+      ball.z = 0;
+      ball.vx = 0;
+      ball.vy = 0;
+      ball.vz = 0;
+      movingRef.current = false;
+      holedRef.current = true;
+      setMoving(false);
+      setHoled(true);
+      overviewUntilRef.current = timestamp + 1600;
+      frameRef.current = null;
+      lastTimeRef.current = null;
+      trailRef.current.push({ x: ball.x, y: ball.y, z: ball.z });
+      draw();
+      return;
+    }
+
     trailRef.current.push({ x: ball.x, y: ball.y, z: ball.z });
     if (trailRef.current.length > 56) {
       trailRef.current.shift();
@@ -1282,14 +1309,28 @@ export function GolfinPrototype() {
     frameRef.current = requestAnimationFrame(step);
   }
 
+  function resetBall() {
+    ballRef.current = { ...startBall };
+    trailRef.current = [];
+    holedRef.current = false;
+    setHoled(false);
+    overviewUntilRef.current = performance.now() + 1500;
+    draw();
+  }
+
   function swing() {
     if (movingRef.current) {
       return;
     }
 
+    if (holedRef.current) {
+      resetBall();
+      return;
+    }
+
     const ball = ballRef.current;
     if (ball.x > worldWidth - 90 || ball.y < 80) {
-      ballRef.current = { ...startBall };
+      resetBall();
     }
 
     trailRef.current = [];
@@ -1340,7 +1381,7 @@ export function GolfinPrototype() {
         })}
       </div>
       <button className="physics-swing" disabled={moving} onClick={swing} type="button">
-        {moving ? "Rolling" : "Swing"}
+        {moving ? "Rolling" : holed ? "Reset" : "Swing"}
       </button>
     </main>
   );
