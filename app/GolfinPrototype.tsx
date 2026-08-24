@@ -275,6 +275,21 @@ const driverPreset = {
   flightSeconds: 4.5,
 };
 
+const trees = [
+  { x: 145, y: 170, r: 30 },
+  { x: 214, y: 238, r: 24 },
+  { x: 676, y: 196, r: 32 },
+  { x: 744, y: 274, r: 26 },
+  { x: 126, y: 488, r: 34 },
+  { x: 760, y: 516, r: 30 },
+  { x: 112, y: 710, r: 28 },
+  { x: 795, y: 742, r: 34 },
+  { x: 178, y: 910, r: 30 },
+  { x: 722, y: 966, r: 28 },
+  { x: 248, y: 1118, r: 24 },
+  { x: 676, y: 1132, r: 26 },
+];
+
 function orientCourse(source: CourseData): CourseData {
   const teePoint = source.holeLine[0];
   const pinPoint = source.pin;
@@ -404,6 +419,98 @@ function drawSurfacePolygons(
   }
 }
 
+function clipSurface(ctx: CanvasRenderingContext2D, surface: CourseSurface, sx: (value: number) => number, sy: (value: number) => number) {
+  ctx.beginPath();
+  surface.points.forEach(([x, y], index) => {
+    if (index === 0) {
+      ctx.moveTo(sx(x), sy(y));
+    } else {
+      ctx.lineTo(sx(x), sy(y));
+    }
+  });
+  ctx.closePath();
+  ctx.clip();
+}
+
+function drawSurfaceTextures(
+  ctx: CanvasRenderingContext2D,
+  sx: (value: number) => number,
+  sy: (value: number) => number,
+  scale: number,
+) {
+  for (const surface of course.surfaces) {
+    ctx.save();
+    clipSurface(ctx, surface, sx, sy);
+
+    if (surface.type === "bunker") {
+      ctx.fillStyle = "rgba(89, 69, 31, 0.2)";
+      for (let i = 0; i < surface.points.length * 3; i += 1) {
+        const base = surface.points[i % surface.points.length];
+        const x = base[0] + Math.sin(i * 12.989) * 18;
+        const y = base[1] + Math.cos(i * 8.531) * 18;
+        ctx.beginPath();
+        ctx.arc(sx(x), sy(y), Math.max(0.8, 1.5 * scale), 0, Math.PI * 2);
+        ctx.fill();
+      }
+    } else {
+      ctx.strokeStyle =
+        surface.type === "green" ? "rgba(236,255,225,0.16)" : "rgba(255,255,255,0.09)";
+      ctx.lineWidth = Math.max(0.7, 1.2 * scale);
+      for (let y = 80; y < worldHeight; y += surface.type === "green" ? 22 : 34) {
+        const lean = Math.sin(y * 0.018) * 7;
+        ctx.beginPath();
+        ctx.moveTo(sx(0), sy(y));
+        ctx.lineTo(sx(worldWidth + lean), sy(y + lean * 0.18));
+        ctx.stroke();
+      }
+    }
+
+    ctx.restore();
+  }
+}
+
+function drawTrees(
+  ctx: CanvasRenderingContext2D,
+  sx: (value: number) => number,
+  sy: (value: number) => number,
+  scale: number,
+  detail: "full" | "mini" = "full",
+) {
+  for (const tree of trees) {
+    const x = sx(tree.x);
+    const y = sy(tree.y);
+    const radius = Math.max(2.5, tree.r * scale);
+
+    ctx.fillStyle = detail === "full" ? "rgba(0, 0, 0, 0.18)" : "rgba(0, 0, 0, 0.12)";
+    ctx.beginPath();
+    ctx.ellipse(x + radius * 0.18, y + radius * 0.18, radius * 0.86, radius * 0.58, 0.4, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = "#1f5f32";
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fill();
+
+    if (detail === "full") {
+      ctx.fillStyle = "#2f7c3f";
+      for (const lobe of [
+        { x: -0.28, y: -0.18, r: 0.52 },
+        { x: 0.24, y: -0.24, r: 0.45 },
+        { x: 0.12, y: 0.28, r: 0.44 },
+      ]) {
+        ctx.beginPath();
+        ctx.arc(x + radius * lobe.x, y + radius * lobe.y, radius * lobe.r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      ctx.fillStyle = "rgba(238, 255, 217, 0.16)";
+      ctx.beginPath();
+      ctx.arc(x - radius * 0.22, y - radius * 0.3, radius * 0.24, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+}
+
 function drawPin(
   ctx: CanvasRenderingContext2D,
   sx: (value: number) => number,
@@ -444,6 +551,8 @@ function drawGrass(
   ctx.fillRect(0, 0, width, height);
 
   drawSurfacePolygons(ctx, sx, sy);
+  drawSurfaceTextures(ctx, sx, sy, scale);
+  drawTrees(ctx, sx, sy, scale);
   drawPin(ctx, sx, sy, scale);
 
 }
@@ -590,6 +699,7 @@ function drawMiniMap(ctx: CanvasRenderingContext2D, width: number, height: numbe
   ctx.fillStyle = rough.color;
   ctx.fillRect(left, top, mapWidth, mapHeight);
   drawSurfacePolygons(ctx, sx, sy);
+  drawTrees(ctx, sx, sy, scale, "mini");
   drawPin(ctx, sx, sy, scale);
 
   ctx.fillStyle = "#ffffff";
