@@ -404,29 +404,6 @@ function drawSurfacePolygons(
   }
 }
 
-function drawHoleLine(
-  ctx: CanvasRenderingContext2D,
-  sx: (value: number) => number,
-  sy: (value: number) => number,
-  scale: number,
-  alpha = 0.34,
-) {
-  ctx.strokeStyle = `rgba(255,255,255,${alpha})`;
-  ctx.lineCap = "round";
-  ctx.lineWidth = 3 * scale;
-  ctx.setLineDash([14 * scale, 12 * scale]);
-  ctx.beginPath();
-  course.holeLine.forEach(([x, y], index) => {
-    if (index === 0) {
-      ctx.moveTo(sx(x), sy(y));
-    } else {
-      ctx.lineTo(sx(x), sy(y));
-    }
-  });
-  ctx.stroke();
-  ctx.setLineDash([]);
-}
-
 function drawPin(
   ctx: CanvasRenderingContext2D,
   sx: (value: number) => number,
@@ -467,7 +444,6 @@ function drawGrass(
   ctx.fillRect(0, 0, width, height);
 
   drawSurfacePolygons(ctx, sx, sy);
-  drawHoleLine(ctx, sx, sy, scale);
   drawPin(ctx, sx, sy, scale);
 
   ctx.fillStyle = "rgba(255,255,255,0.06)";
@@ -618,7 +594,6 @@ function drawMiniMap(ctx: CanvasRenderingContext2D, width: number, height: numbe
   ctx.fillStyle = rough.color;
   ctx.fillRect(left, top, mapWidth, mapHeight);
   drawSurfacePolygons(ctx, sx, sy);
-  drawHoleLine(ctx, sx, sy, scale, 0.55);
   drawPin(ctx, sx, sy, scale);
 
   ctx.fillStyle = "#ffffff";
