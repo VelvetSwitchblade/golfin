@@ -415,6 +415,13 @@ function drawSurfacePolygons(
       });
       ctx.closePath();
       ctx.fill();
+
+      if (surface.type !== "rough") {
+        ctx.strokeStyle =
+          surface.type === "bunker" ? "rgba(91, 70, 34, 0.28)" : "rgba(18, 55, 28, 0.18)";
+        ctx.lineWidth = 1.8;
+        ctx.stroke();
+      }
     }
   }
 }
@@ -432,6 +439,18 @@ function clipSurface(ctx: CanvasRenderingContext2D, surface: CourseSurface, sx: 
   ctx.clip();
 }
 
+function traceSurface(ctx: CanvasRenderingContext2D, surface: CourseSurface, sx: (value: number) => number, sy: (value: number) => number) {
+  ctx.beginPath();
+  surface.points.forEach(([x, y], index) => {
+    if (index === 0) {
+      ctx.moveTo(sx(x), sy(y));
+    } else {
+      ctx.lineTo(sx(x), sy(y));
+    }
+  });
+  ctx.closePath();
+}
+
 function drawSurfaceTextures(
   ctx: CanvasRenderingContext2D,
   sx: (value: number) => number,
@@ -443,24 +462,67 @@ function drawSurfaceTextures(
     clipSurface(ctx, surface, sx, sy);
 
     if (surface.type === "bunker") {
-      ctx.fillStyle = "rgba(89, 69, 31, 0.2)";
-      for (let i = 0; i < surface.points.length * 3; i += 1) {
-        const base = surface.points[i % surface.points.length];
-        const x = base[0] + Math.sin(i * 12.989) * 18;
-        const y = base[1] + Math.cos(i * 8.531) * 18;
-        ctx.beginPath();
-        ctx.arc(sx(x), sy(y), Math.max(0.8, 1.5 * scale), 0, Math.PI * 2);
-        ctx.fill();
-      }
-    } else {
-      ctx.strokeStyle =
-        surface.type === "green" ? "rgba(236,255,225,0.16)" : "rgba(255,255,255,0.09)";
-      ctx.lineWidth = Math.max(0.7, 1.2 * scale);
-      for (let y = 80; y < worldHeight; y += surface.type === "green" ? 22 : 34) {
-        const lean = Math.sin(y * 0.018) * 7;
+      ctx.strokeStyle = "rgba(111, 85, 39, 0.32)";
+      ctx.lineWidth = Math.max(0.7, 1.05 * scale);
+      for (let y = 40; y < worldHeight; y += 18) {
+        const curve = Math.sin(y * 0.035) * 10;
         ctx.beginPath();
         ctx.moveTo(sx(0), sy(y));
-        ctx.lineTo(sx(worldWidth + lean), sy(y + lean * 0.18));
+        ctx.quadraticCurveTo(sx(worldWidth * 0.48), sy(y + curve), sx(worldWidth), sy(y - curve * 0.25));
+        ctx.stroke();
+      }
+
+      ctx.strokeStyle = "rgba(76, 58, 28, 0.22)";
+      ctx.lineWidth = Math.max(1.2, 2.2 * scale);
+      surface.points.forEach(([x, y], index) => {
+        if (index % 3 !== 0) {
+          return;
+        }
+        ctx.beginPath();
+        ctx.arc(sx(x), sy(y), Math.max(2, 6 * scale), 0, Math.PI * 2);
+        ctx.stroke();
+      });
+    } else if (surface.type === "green") {
+      ctx.strokeStyle = "rgba(236, 255, 225, 0.2)";
+      ctx.lineWidth = Math.max(0.7, 1 * scale);
+      for (let y = 0; y < worldHeight; y += 16) {
+        const lean = Math.sin(y * 0.024) * 4;
+        ctx.beginPath();
+        ctx.moveTo(sx(0), sy(y));
+        ctx.lineTo(sx(worldWidth), sy(y + lean));
+        ctx.stroke();
+      }
+
+      ctx.strokeStyle = "rgba(21, 84, 39, 0.24)";
+      ctx.lineWidth = Math.max(4, 8 * scale);
+      traceSurface(ctx, surface, sx, sy);
+      ctx.stroke();
+    } else if (surface.type === "fairway" || surface.type === "tee") {
+      const bandStep = surface.type === "tee" ? 22 : 36;
+      for (let y = 0; y < worldHeight; y += bandStep) {
+        const alternate = Math.floor(y / bandStep) % 2 === 0;
+        ctx.fillStyle = alternate ? "rgba(255,255,255,0.055)" : "rgba(20,75,34,0.055)";
+        ctx.fillRect(sx(0), sy(y), worldWidth * scale, bandStep * 0.52 * scale);
+      }
+
+      ctx.strokeStyle = "rgba(244,255,236,0.12)";
+      ctx.lineWidth = Math.max(0.6, 1 * scale);
+      for (let y = 0; y < worldHeight; y += 72) {
+        ctx.beginPath();
+        ctx.moveTo(sx(0), sy(y));
+        ctx.lineTo(sx(worldWidth), sy(y + Math.sin(y * 0.02) * 4));
+        ctx.stroke();
+      }
+    } else if (surface.type === "rough") {
+      ctx.strokeStyle = "rgba(16, 66, 31, 0.28)";
+      ctx.lineWidth = Math.max(0.8, 1.4 * scale);
+      for (let i = 0; i < surface.points.length * 8; i += 1) {
+        const base = surface.points[i % surface.points.length];
+        const x = base[0] + Math.sin(i * 4.891) * 26;
+        const y = base[1] + Math.cos(i * 7.123) * 26;
+        ctx.beginPath();
+        ctx.moveTo(sx(x), sy(y));
+        ctx.lineTo(sx(x + Math.sin(i) * 9), sy(y - 8));
         ctx.stroke();
       }
     }
@@ -480,32 +542,34 @@ function drawTrees(
     const x = sx(tree.x);
     const y = sy(tree.y);
     const radius = Math.max(2.5, tree.r * scale);
+    const canopy = [
+      { x: 0, y: 0, r: 0.86, c: "#1f5f32" },
+      { x: -0.34, y: -0.18, r: 0.52, c: "#2f7c3f" },
+      { x: 0.3, y: -0.22, r: 0.46, c: "#276f38" },
+      { x: 0.12, y: 0.32, r: 0.48, c: "#245f34" },
+    ];
 
     ctx.fillStyle = detail === "full" ? "rgba(0, 0, 0, 0.18)" : "rgba(0, 0, 0, 0.12)";
     ctx.beginPath();
     ctx.ellipse(x + radius * 0.18, y + radius * 0.18, radius * 0.86, radius * 0.58, 0.4, 0, Math.PI * 2);
     ctx.fill();
 
-    ctx.fillStyle = "#1f5f32";
-    ctx.beginPath();
-    ctx.arc(x, y, radius, 0, Math.PI * 2);
-    ctx.fill();
+    for (const lobe of detail === "full" ? canopy : canopy.slice(0, 1)) {
+      ctx.fillStyle = lobe.c;
+      ctx.beginPath();
+      ctx.arc(x + radius * lobe.x, y + radius * lobe.y, radius * lobe.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
 
     if (detail === "full") {
-      ctx.fillStyle = "#2f7c3f";
-      for (const lobe of [
-        { x: -0.28, y: -0.18, r: 0.52 },
-        { x: 0.24, y: -0.24, r: 0.45 },
-        { x: 0.12, y: 0.28, r: 0.44 },
-      ]) {
-        ctx.beginPath();
-        ctx.arc(x + radius * lobe.x, y + radius * lobe.y, radius * lobe.r, 0, Math.PI * 2);
-        ctx.fill();
-      }
-
       ctx.fillStyle = "rgba(238, 255, 217, 0.16)";
       ctx.beginPath();
       ctx.arc(x - radius * 0.22, y - radius * 0.3, radius * 0.24, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = "rgba(50, 33, 20, 0.28)";
+      ctx.beginPath();
+      ctx.arc(x, y, Math.max(1, radius * 0.1), 0, Math.PI * 2);
       ctx.fill();
     }
   }
