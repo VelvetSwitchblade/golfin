@@ -44,6 +44,18 @@ type CameraState = {
   targetZoom: number;
 };
 
+type SwingSpeed = 80 | 90 | 100 | 110 | 120;
+
+type ClubDefinition = {
+  id: string;
+  name: string;
+  code: string;
+  distances: Partial<Record<SwingSpeed, number>>;
+  flightSeconds: number;
+  spin: number;
+  isPutter?: boolean;
+};
+
 const fairway: Surface = {
   name: "fairway",
   color: "#4fa85d",
@@ -270,12 +282,75 @@ const worldHeight = 1250;
 const roughCollarWidth = 58;
 const treeSetback = 46;
 const scorecardHoleYards = 389;
-const driverPreset = {
-  clubheadMph: 100,
-  carryYards: 238,
-  totalYards: 258,
-  flightSeconds: 4.5,
-};
+const fixedSwingMph: SwingSpeed = 100;
+const clubDefinitions: ClubDefinition[] = [
+  {
+    id: "driver",
+    name: "Driver",
+    code: "DR",
+    distances: { 80: 185, 90: 215, 100: 240, 110: 265, 120: 290 },
+    flightSeconds: 4.5,
+    spin: 1.8,
+  },
+  {
+    id: "3-wood",
+    name: "3 Wood",
+    code: "3W",
+    distances: { 80: 165, 90: 190, 100: 215, 110: 235, 120: 255 },
+    flightSeconds: 4.25,
+    spin: 1.65,
+  },
+  {
+    id: "4-iron",
+    name: "4 Iron",
+    code: "4I",
+    distances: { 80: 135, 90: 155, 100: 175, 110: 195, 120: 215 },
+    flightSeconds: 3.8,
+    spin: 1.5,
+  },
+  {
+    id: "6-iron",
+    name: "6 Iron",
+    code: "6I",
+    distances: { 80: 115, 90: 135, 100: 155, 110: 175, 120: 195 },
+    flightSeconds: 3.55,
+    spin: 1.38,
+  },
+  {
+    id: "8-iron",
+    name: "8 Iron",
+    code: "8I",
+    distances: { 80: 95, 90: 115, 100: 135, 110: 155, 120: 175 },
+    flightSeconds: 3.25,
+    spin: 1.24,
+  },
+  {
+    id: "pitching-wedge",
+    name: "Pitching Wedge",
+    code: "PW",
+    distances: { 80: 75, 90: 95, 100: 115, 110: 135, 120: 150 },
+    flightSeconds: 2.95,
+    spin: 1.12,
+  },
+  {
+    id: "sand-wedge",
+    name: "Sand Wedge",
+    code: "SW",
+    distances: { 80: 55, 90: 75, 100: 90, 110: 105, 120: 120 },
+    flightSeconds: 2.7,
+    spin: 0.95,
+  },
+  {
+    id: "putter",
+    name: "Putter",
+    code: "PT",
+    distances: { 100: 35 },
+    flightSeconds: 0,
+    spin: 0.45,
+    isPutter: true,
+  },
+];
+const defaultClub = clubDefinitions[0];
 
 function orientCourse(source: CourseData): CourseData {
   const teePoint = source.holeLine[0];
@@ -326,13 +401,6 @@ const startBall: BallState = {
   spin: 0,
 };
 
-const fixedShot = {
-  angle: Math.atan2(course.pin[1] - teePoint[1], course.pin[0] - teePoint[0]),
-  speed: (driverPreset.carryYards * worldUnitsPerYard) / driverPreset.flightSeconds,
-  loft: (gravity * driverPreset.flightSeconds) / 2,
-  spin: 1.8,
-};
-
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
 }
@@ -359,6 +427,35 @@ function seededNoise(seed: number) {
 
 function speed(ball: BallState) {
   return Math.hypot(ball.vx, ball.vy);
+}
+
+function clubDistance(club: ClubDefinition) {
+  return club.distances[fixedSwingMph] ?? 35;
+}
+
+function aimAngle(ball: BallState) {
+  return Math.atan2(course.pin[1] - ball.y, course.pin[0] - ball.x);
+}
+
+function createShot(ball: BallState, club: ClubDefinition) {
+  const yards = clubDistance(club);
+  const angle = aimAngle(ball);
+
+  if (club.isPutter) {
+    return {
+      angle,
+      speed: yards * worldUnitsPerYard * 2.2,
+      loft: 0,
+      spin: club.spin,
+    };
+  }
+
+  return {
+    angle,
+    speed: (yards * worldUnitsPerYard) / club.flightSeconds,
+    loft: (gravity * club.flightSeconds) / 2,
+    spin: club.spin,
+  };
 }
 
 function polygonCentroid(points: Array<[number, number]>) {
@@ -781,9 +878,12 @@ function drawAimGhost(
   sy: (value: number) => number,
   scale: number,
   ball: BallState,
+  club: ClubDefinition,
 ) {
-  const endX = ball.x + Math.cos(fixedShot.angle) * 112;
-  const endY = ball.y + Math.sin(fixedShot.angle) * 112;
+  const angle = aimAngle(ball);
+  const aimLength = clamp(clubDistance(club) * worldUnitsPerYard * 0.35, 56, 170);
+  const endX = ball.x + Math.cos(angle) * aimLength;
+  const endY = ball.y + Math.sin(angle) * aimLength;
 
   ctx.strokeStyle = "rgba(255, 255, 255, 0.58)";
   ctx.lineWidth = 3 * scale;
@@ -932,14 +1032,24 @@ function drawMiniMap(ctx: CanvasRenderingContext2D, width: number, height: numbe
   ctx.restore();
 }
 
-function drawHud(ctx: CanvasRenderingContext2D, width: number, ball: BallState) {
+function drawHud(ctx: CanvasRenderingContext2D, width: number, ball: BallState, club: ClubDefinition) {
   const remainingYards = Math.max(
     0,
     Math.hypot(ball.x - course.pin[0], ball.y - course.pin[1]) / worldUnitsPerYard,
   );
-  const panelWidth = Math.min(360, width - 28);
+  const panelWidth = Math.min(390, width - 28);
   const left = 14;
   const top = 14;
+  const distanceLabel = club.isPutter
+    ? `${clubDistance(club)} yd roll`
+    : `${clubDistance(club)} yd carry`;
+  const compact = width < 420;
+  const courseLabel = compact
+    ? `Hole ${course.ref}  |  ${scorecardHoleYards} yd  |  Par ${course.par}`
+    : `${course.name}  |  ${scorecardHoleYards} yd  |  Par ${course.par}`;
+  const clubLabel = compact
+    ? `${club.code}  |  ${distanceLabel}`
+    : `${club.name}  |  ${fixedSwingMph} mph  |  ${distanceLabel}`;
 
   ctx.save();
   ctx.fillStyle = "rgba(12, 30, 18, 0.74)";
@@ -949,15 +1059,11 @@ function drawHud(ctx: CanvasRenderingContext2D, width: number, ball: BallState) 
 
   ctx.fillStyle = "#f8fff2";
   ctx.font = "700 15px Arial, Helvetica, sans-serif";
-  ctx.fillText(`${course.name}  |  ${scorecardHoleYards} yd  |  Par ${course.par}`, left + 14, top + 26);
+  ctx.fillText(courseLabel, left + 14, top + 26);
 
   ctx.fillStyle = "rgba(248, 255, 242, 0.76)";
   ctx.font = "700 13px Arial, Helvetica, sans-serif";
-  ctx.fillText(
-    `Driver ${driverPreset.clubheadMph} mph: ${driverPreset.carryYards} yd carry / ${driverPreset.totalYards} yd total`,
-    left + 14,
-    top + 48,
-  );
+  ctx.fillText(clubLabel, left + 14, top + 48);
   ctx.fillText(`${remainingYards.toFixed(0)} yd to pin`, left + 14, top + 66);
   ctx.restore();
 }
@@ -970,6 +1076,7 @@ export function GolfinPrototype() {
   const movingRef = useRef(false);
   const overviewUntilRef = useRef<number>(0);
   const ballRef = useRef<BallState>({ ...startBall });
+  const selectedClubRef = useRef<ClubDefinition>(defaultClub);
   const cameraRef = useRef<CameraState>({
     x: worldWidth / 2,
     y: worldHeight / 2,
@@ -981,6 +1088,7 @@ export function GolfinPrototype() {
   const trailRef = useRef<Array<{ x: number; y: number; z: number }>>([]);
 
   const [moving, setMoving] = useState(false);
+  const [selectedClubId, setSelectedClubId] = useState(defaultClub.id);
 
   const draw = useCallback((timestamp = performance.now()) => {
     const canvas = canvasRef.current;
@@ -1032,13 +1140,13 @@ export function GolfinPrototype() {
 
     drawGrass(ctx, sx, sy, width, height, camera.zoom);
     drawTrail(ctx, sx, sy, camera.zoom, trailRef.current);
-    drawAimGhost(ctx, sx, sy, camera.zoom, ball);
+    drawAimGhost(ctx, sx, sy, camera.zoom, ball, selectedClubRef.current);
     drawBall(ctx, sx, sy, camera.zoom, ball);
     if (showingOverview) {
       drawOverviewMarker(ctx, sx, sy, camera.zoom, ball);
     }
     drawMiniMap(ctx, width, height, ball);
-    drawHud(ctx, width, ball);
+    drawHud(ctx, width, ball, selectedClubRef.current);
   }, []);
 
   useEffect(() => {
@@ -1146,19 +1254,52 @@ export function GolfinPrototype() {
     }
 
     trailRef.current = [];
-    ballRef.current.vx = Math.cos(fixedShot.angle) * fixedShot.speed;
-    ballRef.current.vy = Math.sin(fixedShot.angle) * fixedShot.speed;
-    ballRef.current.vz = fixedShot.loft;
-    ballRef.current.spin = fixedShot.spin;
+    const shot = createShot(ballRef.current, selectedClubRef.current);
+    ballRef.current.vx = Math.cos(shot.angle) * shot.speed;
+    ballRef.current.vy = Math.sin(shot.angle) * shot.speed;
+    ballRef.current.vz = shot.loft;
+    ballRef.current.spin = shot.spin;
     movingRef.current = true;
     setMoving(true);
     lastTimeRef.current = null;
     frameRef.current = requestAnimationFrame(step);
   }
 
+  function selectClub(club: ClubDefinition) {
+    if (movingRef.current) {
+      return;
+    }
+
+    selectedClubRef.current = club;
+    setSelectedClubId(club.id);
+    draw();
+  }
+
   return (
     <main className="physics-stage" aria-label="Golfin physics prototype">
       <canvas className="physics-canvas" ref={canvasRef} />
+      <div className="club-selector" role="group" aria-label="Club selection">
+        {clubDefinitions.map((club) => {
+          const active = club.id === selectedClubId;
+          const distance = club.isPutter ? `${clubDistance(club)}r` : `${clubDistance(club)}`;
+
+          return (
+            <button
+              aria-label={`${club.name}, ${club.isPutter ? `${clubDistance(club)} yard roll` : `${clubDistance(club)} yards at ${fixedSwingMph} miles per hour`}`}
+              aria-pressed={active}
+              className={`club-option${active ? " is-active" : ""}`}
+              disabled={moving}
+              key={club.id}
+              onClick={() => selectClub(club)}
+              title={`${club.name} - ${club.isPutter ? `${clubDistance(club)} yd roll` : `${clubDistance(club)} yd at ${fixedSwingMph} mph`}`}
+              type="button"
+            >
+              <span className="club-code">{club.code}</span>
+              <span className="club-distance">{distance}</span>
+            </button>
+          );
+        })}
+      </div>
       <button className="physics-swing" disabled={moving} onClick={swing} type="button">
         {moving ? "Rolling" : "Swing"}
       </button>

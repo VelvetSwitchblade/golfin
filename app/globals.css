@@ -47,6 +47,58 @@ button {
   width: 100%;
 }
 
+.club-selector {
+  align-items: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  left: max(12px, env(safe-area-inset-left));
+  position: absolute;
+  top: 104px;
+  width: 48px;
+}
+
+.club-option {
+  -webkit-tap-highlight-color: transparent;
+  align-items: center;
+  background: rgba(12, 30, 18, 0.66);
+  border: 1px solid rgba(248, 255, 242, 0.12);
+  border-radius: 8px;
+  color: rgba(248, 255, 242, 0.78);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  height: 42px;
+  justify-content: center;
+  line-height: 1;
+  padding: 0;
+  width: 48px;
+}
+
+.club-option.is-active {
+  background: #f8fff2;
+  border-color: #f8fff2;
+  color: #183520;
+}
+
+.club-option:disabled {
+  cursor: default;
+  opacity: 0.52;
+}
+
+.club-code {
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.club-distance {
+  font-size: 0.62rem;
+  font-weight: 800;
+  margin-top: 3px;
+  opacity: 0.78;
+}
+
 .physics-swing {
   -webkit-tap-highlight-color: transparent;
   align-items: center;
@@ -73,4 +125,21 @@ button {
 .physics-swing:disabled {
   cursor: default;
   opacity: 0.68;
+}
+
+@media (max-height: 620px) {
+  .club-selector {
+    flex-direction: row;
+    left: 12px;
+    right: 12px;
+    top: auto;
+    width: auto;
+    bottom: calc(max(26px, env(safe-area-inset-bottom)) + 78px);
+  }
+
+  .club-option {
+    flex: 1 1 0;
+    min-width: 38px;
+    width: auto;
+  }
 }
