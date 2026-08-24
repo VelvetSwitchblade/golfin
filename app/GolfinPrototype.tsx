@@ -446,10 +446,6 @@ function drawGrass(
   drawSurfacePolygons(ctx, sx, sy);
   drawPin(ctx, sx, sy, scale);
 
-  ctx.fillStyle = "rgba(255,255,255,0.06)";
-  for (let i = -2; i < 18; i += 1) {
-    ctx.fillRect(sx(i * 76), 0, 18 * scale, height);
-  }
 }
 
 function drawAimGhost(
