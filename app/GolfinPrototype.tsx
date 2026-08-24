@@ -267,6 +267,8 @@ const goodwoodParkHole1: CourseData = {
 const gravity = 170;
 const worldWidth = 900;
 const worldHeight = 1250;
+const roughCollarWidth = 58;
+const treeSetback = 46;
 const scorecardHoleYards = 389;
 const driverPreset = {
   clubheadMph: 100,
@@ -274,21 +276,6 @@ const driverPreset = {
   totalYards: 258,
   flightSeconds: 4.5,
 };
-
-const trees = [
-  { x: 145, y: 170, r: 30 },
-  { x: 214, y: 238, r: 24 },
-  { x: 676, y: 196, r: 32 },
-  { x: 744, y: 274, r: 26 },
-  { x: 126, y: 488, r: 34 },
-  { x: 760, y: 516, r: 30 },
-  { x: 112, y: 710, r: 28 },
-  { x: 795, y: 742, r: 34 },
-  { x: 178, y: 910, r: 30 },
-  { x: 722, y: 966, r: 28 },
-  { x: 248, y: 1118, r: 24 },
-  { x: 676, y: 1132, r: 26 },
-];
 
 function orientCourse(source: CourseData): CourseData {
   const teePoint = source.holeLine[0];
@@ -365,8 +352,82 @@ function lerp(start: number, end: number, amount: number) {
   return start + (end - start) * amount;
 }
 
+function seededNoise(seed: number) {
+  const value = Math.sin(seed * 12.9898) * 43758.5453;
+  return value - Math.floor(value);
+}
+
 function speed(ball: BallState) {
   return Math.hypot(ball.vx, ball.vy);
+}
+
+function polygonCentroid(points: Array<[number, number]>) {
+  let twiceArea = 0;
+  let x = 0;
+  let y = 0;
+
+  for (let i = 0, j = points.length - 1; i < points.length; j = i, i += 1) {
+    const [x0, y0] = points[j];
+    const [x1, y1] = points[i];
+    const cross = x0 * y1 - x1 * y0;
+    twiceArea += cross;
+    x += (x0 + x1) * cross;
+    y += (y0 + y1) * cross;
+  }
+
+  if (Math.abs(twiceArea) < 0.001) {
+    const total = points.reduce(
+      (sum, point) => ({ x: sum.x + point[0], y: sum.y + point[1] }),
+      { x: 0, y: 0 },
+    );
+    return { x: total.x / points.length, y: total.y / points.length };
+  }
+
+  return {
+    x: x / (3 * twiceArea),
+    y: y / (3 * twiceArea),
+  };
+}
+
+function distanceToSegment(
+  x: number,
+  y: number,
+  start: [number, number],
+  end: [number, number],
+) {
+  const dx = end[0] - start[0];
+  const dy = end[1] - start[1];
+  const lengthSq = dx * dx + dy * dy;
+
+  if (lengthSq === 0) {
+    return Math.hypot(x - start[0], y - start[1]);
+  }
+
+  const t = clamp(((x - start[0]) * dx + (y - start[1]) * dy) / lengthSq, 0, 1);
+  const closestX = start[0] + dx * t;
+  const closestY = start[1] + dy * t;
+
+  return Math.hypot(x - closestX, y - closestY);
+}
+
+function distanceToPolygon(x: number, y: number, points: Array<[number, number]>) {
+  if (pointInPolygon(x, y, points)) {
+    return 0;
+  }
+
+  let closest = Number.POSITIVE_INFINITY;
+  for (let i = 0; i < points.length; i += 1) {
+    closest = Math.min(closest, distanceToSegment(x, y, points[i], points[(i + 1) % points.length]));
+  }
+
+  return closest;
+}
+
+function distanceToSurfaces(x: number, y: number, surfaces = course.surfaces) {
+  return surfaces.reduce(
+    (closest, surface) => Math.min(closest, distanceToPolygon(x, y, surface.points)),
+    Number.POSITIVE_INFINITY,
+  );
 }
 
 function pointInPolygon(x: number, y: number, polygon: Array<[number, number]>) {
@@ -382,6 +443,72 @@ function pointInPolygon(x: number, y: number, polygon: Array<[number, number]>) 
   return inside;
 }
 
+function isInMaintainedRough(x: number, y: number) {
+  return distanceToSurfaces(x, y) <= roughCollarWidth;
+}
+
+function createTreeLine() {
+  const trees: Array<{ x: number; y: number; r: number }> = [];
+  const treeSourceTypes: Surface["name"][] = ["fairway", "green", "tee", "rough"];
+  const sourceSurfaces = course.surfaces.filter((surface) => treeSourceTypes.includes(surface.type));
+
+  for (const surface of sourceSurfaces) {
+    const centroid = polygonCentroid(surface.points);
+
+    for (let edgeIndex = 0; edgeIndex < surface.points.length; edgeIndex += 1) {
+      const start = surface.points[edgeIndex];
+      const end = surface.points[(edgeIndex + 1) % surface.points.length];
+      const dx = end[0] - start[0];
+      const dy = end[1] - start[1];
+      const edgeLength = Math.hypot(dx, dy);
+      if (edgeLength < 12) {
+        continue;
+      }
+
+      const count = Math.max(1, Math.floor(edgeLength / 54));
+
+      for (let sampleIndex = 0; sampleIndex < count; sampleIndex += 1) {
+        const t = (sampleIndex + 0.5) / count;
+        const baseX = start[0] + dx * t;
+        const baseY = start[1] + dy * t;
+        const awayX = baseX - centroid.x;
+        const awayY = baseY - centroid.y;
+        const awayLength = Math.hypot(awayX, awayY) || 1;
+        const seed = surface.id * 0.013 + edgeIndex * 8.7 + sampleIndex * 2.31;
+        const stagger = (seededNoise(seed) - 0.5) * 30;
+        const setback = roughCollarWidth + treeSetback + stagger;
+        const lateral = (seededNoise(seed + 4.17) - 0.5) * 28;
+        const tangentX = dx / (edgeLength || 1);
+        const tangentY = dy / (edgeLength || 1);
+        const x = baseX + (awayX / awayLength) * setback + tangentX * lateral;
+        const y = baseY + (awayY / awayLength) * setback + tangentY * lateral;
+
+        if (x < 34 || x > worldWidth - 34 || y < 34 || y > worldHeight - 34) {
+          continue;
+        }
+
+        if (distanceToSurfaces(x, y) < roughCollarWidth + treeSetback * 0.62) {
+          continue;
+        }
+
+        if (trees.some((tree) => Math.hypot(tree.x - x, tree.y - y) < 44)) {
+          continue;
+        }
+
+        trees.push({
+          x: Number(x.toFixed(1)),
+          y: Number(y.toFixed(1)),
+          r: Number((22 + seededNoise(seed + 9.4) * 13).toFixed(1)),
+        });
+      }
+    }
+  }
+
+  return trees;
+}
+
+const trees = createTreeLine();
+
 function surfaceAt(x: number, y: number): Surface {
   const priority: Surface["name"][] = ["bunker", "green", "tee", "rough", "fairway"];
   for (const type of priority) {
@@ -393,7 +520,36 @@ function surfaceAt(x: number, y: number): Surface {
     }
   }
 
-  return rough;
+  if (isInMaintainedRough(x, y)) {
+    return rough;
+  }
+
+  return heavy;
+}
+
+function drawMaintainedRough(
+  ctx: CanvasRenderingContext2D,
+  sx: (value: number) => number,
+  sy: (value: number) => number,
+  scale: number,
+) {
+  ctx.save();
+  ctx.lineJoin = "round";
+  ctx.lineCap = "round";
+
+  for (const surface of course.surfaces) {
+    traceSurface(ctx, surface, sx, sy);
+    ctx.strokeStyle = "rgba(36, 101, 54, 0.52)";
+    ctx.lineWidth = (roughCollarWidth * 2 + 14) * scale;
+    ctx.stroke();
+
+    traceSurface(ctx, surface, sx, sy);
+    ctx.strokeStyle = rough.color;
+    ctx.lineWidth = roughCollarWidth * 2 * scale;
+    ctx.stroke();
+  }
+
+  ctx.restore();
 }
 
 function drawSurfacePolygons(
@@ -611,9 +767,10 @@ function drawGrass(
   height: number,
   scale: number,
 ) {
-  ctx.fillStyle = rough.color;
+  ctx.fillStyle = heavy.color;
   ctx.fillRect(0, 0, width, height);
 
+  drawMaintainedRough(ctx, sx, sy, scale);
   drawSurfacePolygons(ctx, sx, sy);
   drawSurfaceTextures(ctx, sx, sy, scale);
   drawTrees(ctx, sx, sy, scale);
@@ -760,8 +917,9 @@ function drawMiniMap(ctx: CanvasRenderingContext2D, width: number, height: numbe
   ctx.fill();
   ctx.clip();
 
-  ctx.fillStyle = rough.color;
+  ctx.fillStyle = heavy.color;
   ctx.fillRect(left, top, mapWidth, mapHeight);
+  drawMaintainedRough(ctx, sx, sy, scale);
   drawSurfacePolygons(ctx, sx, sy);
   drawTrees(ctx, sx, sy, scale, "mini");
   drawPin(ctx, sx, sy, scale);
