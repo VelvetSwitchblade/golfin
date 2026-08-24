@@ -539,11 +539,6 @@ function drawMaintainedRough(
 
   for (const surface of course.surfaces) {
     traceSurface(ctx, surface, sx, sy);
-    ctx.strokeStyle = "rgba(36, 101, 54, 0.52)";
-    ctx.lineWidth = (roughCollarWidth * 2 + 14) * scale;
-    ctx.stroke();
-
-    traceSurface(ctx, surface, sx, sy);
     ctx.strokeStyle = rough.color;
     ctx.lineWidth = roughCollarWidth * 2 * scale;
     ctx.stroke();
