@@ -520,14 +520,14 @@ function drawBall(
   ball: BallState,
 ) {
   const lift = ball.z * 0.2;
-  const radius = (5.2 + Math.min(2.8, ball.z * 0.005)) * scale;
+  const radius = (3.6 + Math.min(2.1, ball.z * 0.004)) * scale;
   const shadowScale = clamp(1 - ball.z / 460, 0.28, 1);
   const surface = surfaceAt(ball.x, ball.y);
 
   ctx.fillStyle = surface.color;
   ctx.globalAlpha = 0.2;
   ctx.beginPath();
-  ctx.arc(sx(ball.x), sy(ball.y), 13 * scale, 0, Math.PI * 2);
+  ctx.arc(sx(ball.x), sy(ball.y), 8.5 * scale, 0, Math.PI * 2);
   ctx.fill();
   ctx.globalAlpha = 1;
 
