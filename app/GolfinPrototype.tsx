@@ -560,17 +560,7 @@ function drawSurfacePolygons(
   const drawOrder: Surface["name"][] = ["rough", "fairway", "tee", "green", "bunker"];
   for (const type of drawOrder) {
     for (const surface of course.surfaces.filter((item) => item.type === type)) {
-      ctx.fillStyle = materials[surface.type].color;
-      ctx.beginPath();
-      surface.points.forEach(([x, y], index) => {
-        if (index === 0) {
-          ctx.moveTo(sx(x), sy(y));
-        } else {
-          ctx.lineTo(sx(x), sy(y));
-        }
-      });
-      ctx.closePath();
-      ctx.fill();
+      paintSurfaceBase(ctx, surface, sx, sy);
 
       if (surface.type !== "rough") {
         ctx.strokeStyle =
@@ -580,6 +570,17 @@ function drawSurfacePolygons(
       }
     }
   }
+}
+
+function paintSurfaceBase(
+  ctx: CanvasRenderingContext2D,
+  surface: CourseSurface,
+  sx: (value: number) => number,
+  sy: (value: number) => number,
+) {
+  ctx.fillStyle = materials[surface.type].color;
+  traceSurface(ctx, surface, sx, sy);
+  ctx.fill();
 }
 
 function clipSurface(ctx: CanvasRenderingContext2D, surface: CourseSurface, sx: (value: number) => number, sy: (value: number) => number) {
@@ -613,77 +614,78 @@ function drawSurfaceTextures(
   sy: (value: number) => number,
   scale: number,
 ) {
-  for (const surface of course.surfaces) {
-    ctx.save();
-    clipSurface(ctx, surface, sx, sy);
+  const textureOrder: Surface["name"][] = ["rough", "fairway", "tee", "green", "bunker"];
 
-    if (surface.type === "bunker") {
-      ctx.strokeStyle = "rgba(111, 85, 39, 0.32)";
-      ctx.lineWidth = Math.max(0.7, 1.05 * scale);
-      for (let y = 40; y < worldHeight; y += 18) {
-        const curve = Math.sin(y * 0.035) * 10;
-        ctx.beginPath();
-        ctx.moveTo(sx(0), sy(y));
-        ctx.quadraticCurveTo(sx(worldWidth * 0.48), sy(y + curve), sx(worldWidth), sy(y - curve * 0.25));
-        ctx.stroke();
-      }
+  for (const type of textureOrder) {
+    for (const surface of course.surfaces.filter((item) => item.type === type)) {
+      ctx.save();
+      paintSurfaceBase(ctx, surface, sx, sy);
+      clipSurface(ctx, surface, sx, sy);
 
-      ctx.strokeStyle = "rgba(76, 58, 28, 0.22)";
-      ctx.lineWidth = Math.max(1.2, 2.2 * scale);
-      surface.points.forEach(([x, y], index) => {
-        if (index % 3 !== 0) {
-          return;
+      if (surface.type === "bunker") {
+        ctx.strokeStyle = "rgba(111, 85, 39, 0.2)";
+        ctx.lineWidth = Math.max(0.55, 0.8 * scale);
+        for (let y = 34; y < worldHeight; y += 16) {
+          const curve = Math.sin(y * 0.045) * 6;
+          ctx.beginPath();
+          ctx.moveTo(sx(0), sy(y));
+          ctx.quadraticCurveTo(sx(worldWidth * 0.52), sy(y + curve), sx(worldWidth), sy(y - curve * 0.25));
+          ctx.stroke();
         }
-        ctx.beginPath();
-        ctx.arc(sx(x), sy(y), Math.max(2, 6 * scale), 0, Math.PI * 2);
+
+        ctx.restore();
+        ctx.save();
+        ctx.strokeStyle = "rgba(83, 64, 31, 0.26)";
+        ctx.lineWidth = Math.max(1.2, 2.1 * scale);
+        traceSurface(ctx, surface, sx, sy);
         ctx.stroke();
-      });
-    } else if (surface.type === "green") {
-      ctx.strokeStyle = "rgba(236, 255, 225, 0.2)";
-      ctx.lineWidth = Math.max(0.7, 1 * scale);
-      for (let y = 0; y < worldHeight; y += 16) {
-        const lean = Math.sin(y * 0.024) * 4;
-        ctx.beginPath();
-        ctx.moveTo(sx(0), sy(y));
-        ctx.lineTo(sx(worldWidth), sy(y + lean));
+      } else if (surface.type === "green") {
+        ctx.strokeStyle = "rgba(236, 255, 225, 0.2)";
+        ctx.lineWidth = Math.max(0.7, 1 * scale);
+        for (let y = 0; y < worldHeight; y += 16) {
+          const lean = Math.sin(y * 0.024) * 4;
+          ctx.beginPath();
+          ctx.moveTo(sx(0), sy(y));
+          ctx.lineTo(sx(worldWidth), sy(y + lean));
+          ctx.stroke();
+        }
+
+        ctx.strokeStyle = "rgba(21, 84, 39, 0.24)";
+        ctx.lineWidth = Math.max(4, 8 * scale);
+        traceSurface(ctx, surface, sx, sy);
         ctx.stroke();
+      } else if (surface.type === "fairway" || surface.type === "tee") {
+        const bandStep = surface.type === "tee" ? 22 : 36;
+        for (let y = 0; y < worldHeight; y += bandStep) {
+          const alternate = Math.floor(y / bandStep) % 2 === 0;
+          ctx.fillStyle = alternate ? "rgba(255,255,255,0.055)" : "rgba(20,75,34,0.055)";
+          ctx.fillRect(sx(0), sy(y), worldWidth * scale, bandStep * 0.52 * scale);
+        }
+
+        ctx.strokeStyle = "rgba(244,255,236,0.12)";
+        ctx.lineWidth = Math.max(0.6, 1 * scale);
+        for (let y = 0; y < worldHeight; y += 72) {
+          ctx.beginPath();
+          ctx.moveTo(sx(0), sy(y));
+          ctx.lineTo(sx(worldWidth), sy(y + Math.sin(y * 0.02) * 4));
+          ctx.stroke();
+        }
+      } else if (surface.type === "rough") {
+        ctx.strokeStyle = "rgba(16, 66, 31, 0.28)";
+        ctx.lineWidth = Math.max(0.8, 1.4 * scale);
+        for (let i = 0; i < surface.points.length * 8; i += 1) {
+          const base = surface.points[i % surface.points.length];
+          const x = base[0] + Math.sin(i * 4.891) * 26;
+          const y = base[1] + Math.cos(i * 7.123) * 26;
+          ctx.beginPath();
+          ctx.moveTo(sx(x), sy(y));
+          ctx.lineTo(sx(x + Math.sin(i) * 9), sy(y - 8));
+          ctx.stroke();
+        }
       }
 
-      ctx.strokeStyle = "rgba(21, 84, 39, 0.24)";
-      ctx.lineWidth = Math.max(4, 8 * scale);
-      traceSurface(ctx, surface, sx, sy);
-      ctx.stroke();
-    } else if (surface.type === "fairway" || surface.type === "tee") {
-      const bandStep = surface.type === "tee" ? 22 : 36;
-      for (let y = 0; y < worldHeight; y += bandStep) {
-        const alternate = Math.floor(y / bandStep) % 2 === 0;
-        ctx.fillStyle = alternate ? "rgba(255,255,255,0.055)" : "rgba(20,75,34,0.055)";
-        ctx.fillRect(sx(0), sy(y), worldWidth * scale, bandStep * 0.52 * scale);
-      }
-
-      ctx.strokeStyle = "rgba(244,255,236,0.12)";
-      ctx.lineWidth = Math.max(0.6, 1 * scale);
-      for (let y = 0; y < worldHeight; y += 72) {
-        ctx.beginPath();
-        ctx.moveTo(sx(0), sy(y));
-        ctx.lineTo(sx(worldWidth), sy(y + Math.sin(y * 0.02) * 4));
-        ctx.stroke();
-      }
-    } else if (surface.type === "rough") {
-      ctx.strokeStyle = "rgba(16, 66, 31, 0.28)";
-      ctx.lineWidth = Math.max(0.8, 1.4 * scale);
-      for (let i = 0; i < surface.points.length * 8; i += 1) {
-        const base = surface.points[i % surface.points.length];
-        const x = base[0] + Math.sin(i * 4.891) * 26;
-        const y = base[1] + Math.cos(i * 7.123) * 26;
-        ctx.beginPath();
-        ctx.moveTo(sx(x), sy(y));
-        ctx.lineTo(sx(x + Math.sin(i) * 9), sy(y - 8));
-        ctx.stroke();
-      }
+      ctx.restore();
     }
-
-    ctx.restore();
   }
 }
 
