@@ -1,0 +1,496 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f5f7ee;
+  --foreground: #17201a;
+  --panel: #fffdf3;
+  --ink-muted: #5c675e;
+  --line: rgba(23, 32, 26, 0.14);
+  --green: #2d8d5b;
+  --green-dark: #155a43;
+  --mint: #69d7bd;
+  --yellow: #f2c94c;
+  --red: #e85d55;
+  --blue: #4069b2;
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-width: 320px;
+  background: var(--background);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  margin: 0;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+.game-shell {
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+.hero-band {
+  align-items: end;
+  background:
+    linear-gradient(135deg, rgba(21, 90, 67, 0.92), rgba(45, 141, 91, 0.72)),
+    repeating-linear-gradient(105deg, rgba(255, 255, 255, 0.12) 0 2px, transparent 2px 24px),
+    #237152;
+  color: #fffdf3;
+  display: grid;
+  gap: 32px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-height: clamp(360px, 58vh, 560px);
+  padding: clamp(28px, 7vw, 82px);
+  position: relative;
+}
+
+.hero-band::after {
+  background:
+    radial-gradient(circle at 18% 78%, rgba(242, 201, 76, 0.95) 0 4px, transparent 5px),
+    radial-gradient(circle at 42% 66%, rgba(255, 253, 243, 0.9) 0 3px, transparent 4px),
+    radial-gradient(circle at 73% 34%, rgba(232, 93, 85, 0.9) 0 5px, transparent 6px);
+  content: "";
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+}
+
+.hero-copy {
+  max-width: 760px;
+  position: relative;
+  z-index: 1;
+}
+
+.eyebrow,
+.label,
+.course-toolbar span,
+.session-card span {
+  color: inherit;
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.hero-copy h1 {
+  font-size: clamp(4rem, 15vw, 9rem);
+  line-height: 0.86;
+  margin: 10px 0 24px;
+}
+
+.hero-copy p:last-child {
+  font-size: clamp(1.05rem, 2vw, 1.35rem);
+  line-height: 1.55;
+  margin: 0;
+  max-width: 660px;
+}
+
+.session-card {
+  align-items: start;
+  background: rgba(255, 253, 243, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.36);
+  border-radius: 8px;
+  display: grid;
+  gap: 7px;
+  min-width: min(260px, 100%);
+  padding: 18px;
+  position: relative;
+  z-index: 1;
+}
+
+.session-card strong {
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 1.6rem;
+}
+
+.session-card small {
+  color: rgba(255, 253, 243, 0.78);
+}
+
+.control-band,
+.play-layout,
+.tabletop-band {
+  margin: 0 auto;
+  max-width: 1480px;
+  padding: 24px clamp(16px, 4vw, 44px);
+}
+
+.control-band {
+  align-items: center;
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(260px, 360px) 1fr;
+}
+
+.segmented-control,
+.mode-grid,
+.club-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.segmented-control {
+  background: #dfe9d3;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  grid-template-columns: 1fr 1fr;
+  padding: 5px;
+}
+
+.segmented-control button,
+.mode-pill,
+.club,
+.reset-button,
+.calibrate,
+.swing-button {
+  border: 0;
+  border-radius: 8px;
+  min-height: 48px;
+}
+
+.segmented-control button {
+  background: transparent;
+  color: var(--ink-muted);
+  display: grid;
+  font-weight: 850;
+  padding: 10px 12px;
+  text-align: left;
+}
+
+.segmented-control span,
+.mode-pill span,
+.club span {
+  font-size: 0.74rem;
+  font-weight: 650;
+  opacity: 0.72;
+}
+
+.segmented-control .active,
+.mode-pill.active,
+.club.active {
+  background: var(--green-dark);
+  color: #fffdf3;
+}
+
+.mode-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.mode-pill {
+  background: #fffdf3;
+  border: 1px solid var(--line);
+  color: var(--foreground);
+  display: grid;
+  font-weight: 850;
+  padding: 12px 14px;
+  text-align: left;
+}
+
+.play-layout {
+  align-items: stretch;
+  display: grid;
+  gap: 20px;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 380px);
+}
+
+.course-panel,
+.shot-panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.course-panel {
+  overflow: hidden;
+}
+
+.course-toolbar {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 1fr auto auto;
+  padding: 14px 16px;
+}
+
+.course-toolbar div {
+  display: grid;
+  gap: 3px;
+}
+
+.course-toolbar span {
+  color: var(--ink-muted);
+}
+
+.course-toolbar strong {
+  font-size: 1rem;
+}
+
+.course-canvas {
+  aspect-ratio: 16 / 9;
+  display: block;
+  min-height: 320px;
+  touch-action: none;
+  width: 100%;
+}
+
+.shot-panel {
+  display: grid;
+  gap: 18px;
+  padding: 18px;
+}
+
+.panel-section {
+  display: grid;
+  gap: 12px;
+}
+
+.label {
+  color: var(--ink-muted);
+}
+
+.club-grid {
+  grid-template-columns: 1fr 1fr;
+}
+
+.club {
+  background: #eff4e8;
+  border: 1px solid var(--line);
+  color: var(--foreground);
+  display: grid;
+  font-weight: 850;
+  padding: 12px;
+  text-align: left;
+}
+
+.club:disabled {
+  opacity: 0.42;
+}
+
+input[type="range"] {
+  accent-color: var(--green-dark);
+  width: 100%;
+}
+
+.readout {
+  color: var(--ink-muted);
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 0.88rem;
+}
+
+.power-track {
+  background: #d7ded1;
+  border-radius: 999px;
+  height: 18px;
+  overflow: hidden;
+  position: relative;
+}
+
+.sweet-spot {
+  background: rgba(242, 201, 76, 0.85);
+  height: 100%;
+  left: 62%;
+  position: absolute;
+  width: 18%;
+  z-index: 1;
+}
+
+.power-fill {
+  background: linear-gradient(90deg, var(--mint), var(--yellow), var(--red));
+  height: 100%;
+  position: relative;
+  transition: width 80ms linear;
+  z-index: 2;
+}
+
+.swing-button {
+  background: var(--red);
+  color: white;
+  font-size: 1.05rem;
+  font-weight: 900;
+  padding: 14px 18px;
+}
+
+.status {
+  color: var(--ink-muted);
+  line-height: 1.45;
+  margin: 0;
+}
+
+.reset-button,
+.calibrate {
+  background: #17201a;
+  color: #fffdf3;
+  font-weight: 850;
+  padding: 12px 16px;
+}
+
+.tabletop-band {
+  align-items: center;
+  display: grid;
+  gap: 26px;
+  grid-template-columns: minmax(280px, 0.84fr) minmax(340px, 1.16fr);
+  padding-bottom: 48px;
+}
+
+.tabletop-copy h2 {
+  font-size: clamp(2rem, 5vw, 4.3rem);
+  line-height: 0.98;
+  margin: 8px 0 16px;
+}
+
+.tabletop-copy p {
+  color: var(--ink-muted);
+  line-height: 1.6;
+  margin: 0 0 20px;
+  max-width: 620px;
+}
+
+.calibrate.calibrated {
+  background: var(--green-dark);
+}
+
+.device-board {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 0.92fr 1fr 1fr;
+  grid-template-rows: 160px 132px;
+  min-height: 302px;
+}
+
+.device-tile {
+  align-content: end;
+  background:
+    linear-gradient(160deg, rgba(255, 255, 255, 0.16), transparent),
+    #27384a;
+  border: 3px solid #101922;
+  border-radius: 8px;
+  color: #fffdf3;
+  display: grid;
+  gap: 4px;
+  padding: 14px;
+}
+
+.device-tile strong,
+.device-tile span,
+.device-tile small {
+  display: block;
+}
+
+.device-tile span,
+.device-tile small {
+  color: rgba(255, 253, 243, 0.78);
+  font-size: 0.8rem;
+}
+
+.device-tile.host {
+  background:
+    linear-gradient(160deg, rgba(242, 201, 76, 0.35), transparent),
+    #234c3f;
+  grid-column: 1 / -1;
+  min-height: 130px;
+}
+
+.device-tile.p2 {
+  background-color: #3d5c8c;
+}
+
+.device-tile.p3 {
+  background-color: #215f54;
+}
+
+.device-tile.p4 {
+  background-color: #7b453f;
+}
+
+@media (max-width: 1060px) {
+  .control-band,
+  .play-layout,
+  .tabletop-band {
+    grid-template-columns: 1fr;
+  }
+
+  .mode-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .shot-panel {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .reset-button {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 720px) {
+  .hero-band {
+    grid-template-columns: 1fr;
+    min-height: 440px;
+  }
+
+  .hero-copy h1 {
+    font-size: clamp(3.5rem, 26vw, 6.5rem);
+  }
+
+  .control-band,
+  .play-layout,
+  .tabletop-band {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .mode-grid,
+  .club-grid,
+  .shot-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .course-toolbar {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .course-toolbar div:first-child {
+    grid-column: 1 / -1;
+  }
+
+  .course-canvas {
+    min-height: 260px;
+  }
+
+  .device-board {
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 120px 130px 130px;
+    min-height: 390px;
+  }
+
+  .device-tile.host {
+    grid-column: 1 / -1;
+  }
+}
+}
