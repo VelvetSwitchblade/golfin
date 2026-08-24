@@ -29,8 +29,8 @@ test("server-renders the Golfin shell", async () => {
 
   const html = await response.text();
   assert.match(html, /<title>Golfin<\/title>/i);
-  assert.match(html, /Browser golf prototype/);
-  assert.match(html, /Tabletop/);
-  assert.match(html, /Phone Controller/);
+  assert.match(html, /Golfin physics prototype/);
+  assert.match(html, /Swing/);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton|Your site is taking shape/);
+  assert.doesNotMatch(html, /Tabletop|Phone Controller|Local Co-op/);
 });

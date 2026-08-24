@@ -4,7 +4,7 @@ import { GolfinPrototype } from "./GolfinPrototype";
 export const metadata: Metadata = {
   title: "Golfin",
   description:
-    "A browser golf prototype with classic courses, crazy golf, phone controllers, and tabletop play.",
+    "A fullscreen golf physics prototype for testing ball flight, bounce, and roll.",
 };
 
 export default function Home() {

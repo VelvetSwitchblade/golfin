@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Golfin",
   description:
-    "A browser golf prototype with classic golf, crazy golf, phone controllers, and tabletop play.",
+    "A fullscreen golf physics prototype for testing ball flight, bounce, and roll.",
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",
