@@ -535,9 +535,9 @@ function drawBall(
   ctx.beginPath();
   ctx.ellipse(
     sx(ball.x),
-    sy(ball.y) + 8 * scale,
-    radius * 1.25 * shadowScale,
-    radius * 0.48 * shadowScale,
+    sy(ball.y) + 2 * scale,
+    radius * 0.86 * shadowScale,
+    radius * 0.32 * shadowScale,
     0,
     0,
     Math.PI * 2,
