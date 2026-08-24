@@ -56,6 +56,8 @@ type ClubDefinition = {
   isPutter?: boolean;
 };
 
+type HoleState = "playing" | "celebrating" | "complete";
+
 const fairway: Surface = {
   name: "fairway",
   color: "#4fa85d",
@@ -1077,7 +1079,7 @@ function drawMiniMap(ctx: CanvasRenderingContext2D, width: number, height: numbe
   ctx.restore();
 }
 
-function drawHud(ctx: CanvasRenderingContext2D, width: number, ball: BallState, club: ClubDefinition, holed: boolean) {
+function drawHud(ctx: CanvasRenderingContext2D, width: number, ball: BallState, club: ClubDefinition) {
   const remainingYards = Math.max(0, distanceToPin(ball) / worldUnitsPerYard);
   const panelWidth = Math.min(390, width - 28);
   const left = 14;
@@ -1106,7 +1108,7 @@ function drawHud(ctx: CanvasRenderingContext2D, width: number, ball: BallState, 
   ctx.fillStyle = "rgba(248, 255, 242, 0.76)";
   ctx.font = "700 13px Arial, Helvetica, sans-serif";
   ctx.fillText(clubLabel, left + 14, top + 48);
-  ctx.fillText(holed ? "Holed" : `${remainingYards.toFixed(0)} yd to pin`, left + 14, top + 66);
+  ctx.fillText(`${remainingYards.toFixed(0)} yd to pin`, left + 14, top + 66);
   ctx.restore();
 }
 
@@ -1117,6 +1119,7 @@ export function GolfinPrototype() {
   const lastTimeRef = useRef<number | null>(null);
   const movingRef = useRef(false);
   const overviewUntilRef = useRef<number>(0);
+  const celebrationTimeoutRef = useRef<number | null>(null);
   const ballRef = useRef<BallState>({ ...startBall });
   const holedRef = useRef(false);
   const selectedClubRef = useRef<ClubDefinition>(defaultClub);
@@ -1131,7 +1134,7 @@ export function GolfinPrototype() {
   const trailRef = useRef<Array<{ x: number; y: number; z: number }>>([]);
 
   const [moving, setMoving] = useState(false);
-  const [holed, setHoled] = useState(false);
+  const [holeState, setHoleState] = useState<HoleState>("playing");
   const [selectedClubId, setSelectedClubId] = useState(defaultClub.id);
 
   const draw = useCallback((timestamp = performance.now()) => {
@@ -1187,12 +1190,16 @@ export function GolfinPrototype() {
     if (!holedRef.current) {
       drawAimGhost(ctx, sx, sy, camera.zoom, ball, selectedClubRef.current);
     }
-    drawBall(ctx, sx, sy, camera.zoom, ball);
+    if (!holedRef.current) {
+      drawBall(ctx, sx, sy, camera.zoom, ball);
+    }
     if (showingOverview) {
       drawOverviewMarker(ctx, sx, sy, camera.zoom, ball);
     }
-    drawMiniMap(ctx, width, height, ball);
-    drawHud(ctx, width, ball, selectedClubRef.current, holedRef.current);
+    if (!holedRef.current) {
+      drawMiniMap(ctx, width, height, ball);
+      drawHud(ctx, width, ball, selectedClubRef.current);
+    }
   }, []);
 
   useEffect(() => {
@@ -1211,6 +1218,9 @@ export function GolfinPrototype() {
 
     return () => {
       window.removeEventListener("resize", resize);
+      if (celebrationTimeoutRef.current) {
+        window.clearTimeout(celebrationTimeoutRef.current);
+      }
       if (frameRef.current) {
         cancelAnimationFrame(frameRef.current);
       }
@@ -1277,12 +1287,15 @@ export function GolfinPrototype() {
       movingRef.current = false;
       holedRef.current = true;
       setMoving(false);
-      setHoled(true);
+      setHoleState("celebrating");
+      celebrationTimeoutRef.current = window.setTimeout(() => {
+        celebrationTimeoutRef.current = null;
+        setHoleState("complete");
+      }, 1450);
       overviewUntilRef.current = timestamp + 1600;
       frameRef.current = null;
       lastTimeRef.current = null;
       trailRef.current.push({ x: ball.x, y: ball.y, z: ball.z });
-      draw();
       return;
     }
 
@@ -1310,10 +1323,15 @@ export function GolfinPrototype() {
   }
 
   function resetBall() {
+    if (celebrationTimeoutRef.current) {
+      window.clearTimeout(celebrationTimeoutRef.current);
+      celebrationTimeoutRef.current = null;
+    }
+
     ballRef.current = { ...startBall };
     trailRef.current = [];
     holedRef.current = false;
-    setHoled(false);
+    setHoleState("playing");
     overviewUntilRef.current = performance.now() + 1500;
     draw();
   }
@@ -1358,31 +1376,50 @@ export function GolfinPrototype() {
   return (
     <main className="physics-stage" aria-label="Golfin physics prototype">
       <canvas className="physics-canvas" ref={canvasRef} />
-      <div className="club-selector" role="group" aria-label="Club selection">
-        {clubDefinitions.map((club) => {
-          const active = club.id === selectedClubId;
-          const distance = club.isPutter ? `${clubDistance(club)}r` : `${clubDistance(club)}`;
+      {holeState === "celebrating" && (
+        <div className="hole-celebration" aria-live="polite">
+          <span className="hole-flash hole-flash-a" />
+          <span className="hole-flash hole-flash-b" />
+          <span className="hole-flash hole-flash-c" />
+          <strong>HOLE!</strong>
+        </div>
+      )}
+      {holeState === "complete" && (
+        <div className="hole-complete">
+          <button className="hole-reset" onClick={resetBall} type="button">
+            Reset
+          </button>
+        </div>
+      )}
+      {holeState === "playing" && (
+        <div className="club-selector" role="group" aria-label="Club selection">
+          {clubDefinitions.map((club) => {
+            const active = club.id === selectedClubId;
+            const distance = club.isPutter ? `${clubDistance(club)}r` : `${clubDistance(club)}`;
 
-          return (
-            <button
-              aria-label={`${club.name}, ${club.isPutter ? `${clubDistance(club)} yard roll` : `${clubDistance(club)} yards at ${fixedSwingMph} miles per hour`}`}
-              aria-pressed={active}
-              className={`club-option${active ? " is-active" : ""}`}
-              disabled={moving}
-              key={club.id}
-              onClick={() => selectClub(club)}
-              title={`${club.name} - ${club.isPutter ? `${clubDistance(club)} yd roll` : `${clubDistance(club)} yd at ${fixedSwingMph} mph`}`}
-              type="button"
-            >
-              <span className="club-code">{club.code}</span>
-              <span className="club-distance">{distance}</span>
-            </button>
-          );
-        })}
-      </div>
-      <button className="physics-swing" disabled={moving} onClick={swing} type="button">
-        {moving ? "Rolling" : holed ? "Reset" : "Swing"}
-      </button>
+            return (
+              <button
+                aria-label={`${club.name}, ${club.isPutter ? `${clubDistance(club)} yard roll` : `${clubDistance(club)} yards at ${fixedSwingMph} miles per hour`}`}
+                aria-pressed={active}
+                className={`club-option${active ? " is-active" : ""}`}
+                disabled={moving}
+                key={club.id}
+                onClick={() => selectClub(club)}
+                title={`${club.name} - ${club.isPutter ? `${clubDistance(club)} yd roll` : `${clubDistance(club)} yd at ${fixedSwingMph} mph`}`}
+                type="button"
+              >
+                <span className="club-code">{club.code}</span>
+                <span className="club-distance">{distance}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+      {holeState === "playing" && (
+        <button className="physics-swing" disabled={moving} onClick={swing} type="button">
+          {moving ? "Rolling" : "Swing"}
+        </button>
+      )}
     </main>
   );
 }
