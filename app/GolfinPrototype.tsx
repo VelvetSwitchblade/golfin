@@ -676,28 +676,51 @@ function paintSurfaceBase(
 }
 
 function clipSurface(ctx: CanvasRenderingContext2D, surface: CourseSurface, sx: (value: number) => number, sy: (value: number) => number) {
-  ctx.beginPath();
-  surface.points.forEach(([x, y], index) => {
-    if (index === 0) {
-      ctx.moveTo(sx(x), sy(y));
-    } else {
-      ctx.lineTo(sx(x), sy(y));
-    }
-  });
-  ctx.closePath();
+  traceSurface(ctx, surface, sx, sy);
   ctx.clip();
 }
 
 function traceSurface(ctx: CanvasRenderingContext2D, surface: CourseSurface, sx: (value: number) => number, sy: (value: number) => number) {
+  const points = normalizedPolygon(surface.points);
+
   ctx.beginPath();
-  surface.points.forEach(([x, y], index) => {
-    if (index === 0) {
-      ctx.moveTo(sx(x), sy(y));
-    } else {
-      ctx.lineTo(sx(x), sy(y));
-    }
+
+  if (points.length < 3) {
+    points.forEach(([x, y], index) => {
+      if (index === 0) {
+        ctx.moveTo(sx(x), sy(y));
+      } else {
+        ctx.lineTo(sx(x), sy(y));
+      }
+    });
+    ctx.closePath();
+    return;
+  }
+
+  const first = points[0];
+  const last = points[points.length - 1];
+  const start: [number, number] = [(first[0] + last[0]) / 2, (first[1] + last[1]) / 2];
+  ctx.moveTo(sx(start[0]), sy(start[1]));
+
+  points.forEach((point, index) => {
+    const next = points[(index + 1) % points.length];
+    const midpoint: [number, number] = [(point[0] + next[0]) / 2, (point[1] + next[1]) / 2];
+    ctx.quadraticCurveTo(sx(point[0]), sy(point[1]), sx(midpoint[0]), sy(midpoint[1]));
   });
+
   ctx.closePath();
+}
+
+function normalizedPolygon(points: Array<[number, number]>) {
+  const normalized = [...points];
+  const first = normalized[0];
+  const last = normalized[normalized.length - 1];
+
+  if (first && last && Math.hypot(first[0] - last[0], first[1] - last[1]) < 0.1) {
+    normalized.pop();
+  }
+
+  return normalized;
 }
 
 function drawSurfaceTextures(
