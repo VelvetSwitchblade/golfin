@@ -63,6 +63,14 @@ type RenderRules = {
   windStrength: number;
 };
 
+type SurfaceEmbossRule = {
+  width: number;
+  offset: number;
+  blur: number;
+  light: number;
+  shade: number;
+};
+
 type CourseData = {
   name: string;
   ref: string;
@@ -401,6 +409,12 @@ const renderRules: RenderRules = {
   windStrength: 0.38,
 };
 const sunVector = { x: -0.62, y: 0.78 };
+const surfaceEmbossRules: Partial<Record<Surface["name"], SurfaceEmbossRule>> = {
+  rough: { width: 2.6, offset: 0.85, blur: 0.9, light: 0.045, shade: 0.065 },
+  fairway: { width: 3.2, offset: 1, blur: 1, light: 0.06, shade: 0.085 },
+  tee: { width: 2.8, offset: 0.95, blur: 0.95, light: 0.055, shade: 0.075 },
+  green: { width: 2.6, offset: 0.85, blur: 0.9, light: 0.05, shade: 0.07 },
+};
 const clubDefinitions: ClubDefinition[] = [
   {
     id: "driver",
@@ -1267,13 +1281,7 @@ function drawSurfaceEmboss(
   sy: (value: number) => number,
   scale: number,
 ) {
-  const surfaceDepth: Partial<Record<Surface["name"], { width: number; offset: number; light: number; shade: number; seam: number }>> = {
-    rough: { width: 2.4, offset: 1.25, light: 0.1, shade: 0.15, seam: 0.09 },
-    fairway: { width: 3.1, offset: 1.65, light: 0.14, shade: 0.2, seam: 0.12 },
-    tee: { width: 2.6, offset: 1.45, light: 0.13, shade: 0.18, seam: 0.11 },
-    green: { width: 2.4, offset: 1.35, light: 0.13, shade: 0.17, seam: 0.1 },
-  };
-  const rule = surfaceDepth[surface.type];
+  const rule = surfaceEmbossRules[surface.type];
 
   if (!rule) {
     return;
@@ -1284,10 +1292,12 @@ function drawSurfaceEmboss(
   const shadeX = sunVector.x * rule.offset * scale;
   const shadeY = sunVector.y * rule.offset * scale;
   const lineWidth = Math.max(0.9, rule.width * scale);
+  const edgeBlur = Math.max(0.25, rule.blur * scale);
 
   ctx.save();
   ctx.lineJoin = "round";
   ctx.lineCap = "round";
+  ctx.filter = `blur(${edgeBlur}px)`;
   ctx.globalCompositeOperation = "screen";
   ctx.translate(lightX, lightY);
   traceSurface(ctx, surface, sx, sy);
@@ -1299,20 +1309,12 @@ function drawSurfaceEmboss(
   ctx.save();
   ctx.lineJoin = "round";
   ctx.lineCap = "round";
+  ctx.filter = `blur(${edgeBlur}px)`;
   ctx.globalCompositeOperation = "multiply";
   ctx.translate(shadeX, shadeY);
   traceSurface(ctx, surface, sx, sy);
   ctx.strokeStyle = `rgba(4, 24, 12, ${rule.shade})`;
   ctx.lineWidth = lineWidth;
-  ctx.stroke();
-  ctx.restore();
-
-  ctx.save();
-  ctx.lineJoin = "round";
-  ctx.lineCap = "round";
-  traceSurface(ctx, surface, sx, sy);
-  ctx.strokeStyle = `rgba(15, 49, 24, ${rule.seam})`;
-  ctx.lineWidth = Math.max(0.45, 0.75 * scale);
   ctx.stroke();
   ctx.restore();
 }
