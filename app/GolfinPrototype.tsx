@@ -40,6 +40,18 @@ type WaterEdgeDetail = {
   seed: number;
 };
 
+type GrassTextureSpec = {
+  base: [number, number, number];
+  highlight: [number, number, number];
+  shade: [number, number, number];
+  blade: [number, number, number];
+  bladeDensity: number;
+  bladeLength: number;
+  bumpStrength: number;
+  seed: number;
+  tileSize: number;
+};
+
 type CourseData = {
   name: string;
   ref: string;
@@ -127,6 +139,64 @@ const materials: Record<Surface["name"], Surface> = {
   green,
   bunker,
   tee,
+};
+
+const grassTextureSpecs: Record<Exclude<Surface["name"], "bunker">, GrassTextureSpec> = {
+  fairway: {
+    base: [66, 146, 72],
+    highlight: [126, 191, 98],
+    shade: [35, 91, 45],
+    blade: [149, 210, 117],
+    bladeDensity: 0.48,
+    bladeLength: 11,
+    bumpStrength: 0.95,
+    seed: 12.4,
+    tileSize: 160,
+  },
+  green: {
+    base: [94, 181, 91],
+    highlight: [163, 222, 126],
+    shade: [54, 126, 55],
+    blade: [188, 239, 147],
+    bladeDensity: 0.34,
+    bladeLength: 6,
+    bumpStrength: 0.48,
+    seed: 28.9,
+    tileSize: 128,
+  },
+  heavy: {
+    base: [31, 91, 50],
+    highlight: [79, 132, 61],
+    shade: [13, 53, 32],
+    blade: [96, 144, 76],
+    bladeDensity: 0.76,
+    bladeLength: 17,
+    bumpStrength: 1.32,
+    seed: 44.2,
+    tileSize: 192,
+  },
+  rough: {
+    base: [42, 116, 59],
+    highlight: [98, 160, 78],
+    shade: [24, 77, 42],
+    blade: [117, 177, 87],
+    bladeDensity: 0.66,
+    bladeLength: 15,
+    bumpStrength: 1.16,
+    seed: 63.7,
+    tileSize: 176,
+  },
+  tee: {
+    base: [87, 166, 86],
+    highlight: [150, 210, 120],
+    shade: [48, 112, 53],
+    blade: [172, 227, 137],
+    bladeDensity: 0.42,
+    bladeLength: 8,
+    bumpStrength: 0.72,
+    seed: 78.5,
+    tileSize: 128,
+  },
 };
 
 const goodwoodParkHole1: CourseData = {
@@ -305,6 +375,9 @@ const celebrationDurationMs = 2600;
 const outOfBoundsDurationMs = 1450;
 const scorecardHoleYards = 389;
 const fixedSwingMph: SwingSpeed = 100;
+const showWaterLayer = false;
+const showSceneryLayer = false;
+const useWaterPenalties = false;
 const sunVector = { x: -0.62, y: 0.78 };
 const clubDefinitions: ClubDefinition[] = [
   {
@@ -533,6 +606,134 @@ function seededNoise(seed: number) {
   return value - Math.floor(value);
 }
 
+function mixChannel(start: number, end: number, amount: number) {
+  return Math.round(lerp(start, end, amount));
+}
+
+function mixColor(
+  start: [number, number, number],
+  end: [number, number, number],
+  amount: number,
+) {
+  return [
+    mixChannel(start[0], end[0], amount),
+    mixChannel(start[1], end[1], amount),
+    mixChannel(start[2], end[2], amount),
+  ] as [number, number, number];
+}
+
+function colorString(color: [number, number, number], alpha = 1) {
+  return `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${alpha})`;
+}
+
+function textureNoise(x: number, y: number, seed: number) {
+  const coarse =
+    seededNoise(Math.floor(x / 18) * 2.73 + Math.floor(y / 18) * 8.21 + seed) * 0.5;
+  const mid =
+    seededNoise(Math.floor(x / 7) * 5.17 + Math.floor(y / 7) * 3.61 + seed * 2.1) * 0.32;
+  const fine =
+    seededNoise(Math.floor(x / 2) * 9.43 + Math.floor(y / 2) * 6.47 + seed * 4.3) * 0.18;
+
+  return coarse + mid + fine;
+}
+
+const grassPatternCache = new Map<string, CanvasPattern>();
+
+function createGrassPattern(ctx: CanvasRenderingContext2D, type: Exclude<Surface["name"], "bunker">) {
+  const cached = grassPatternCache.get(type);
+  if (cached) {
+    return cached;
+  }
+
+  const spec = grassTextureSpecs[type];
+  const canvas = document.createElement("canvas");
+  canvas.width = spec.tileSize;
+  canvas.height = spec.tileSize;
+
+  const textureCtx = canvas.getContext("2d");
+  if (!textureCtx) {
+    return null;
+  }
+
+  const image = textureCtx.createImageData(canvas.width, canvas.height);
+  const height = new Float32Array(canvas.width * canvas.height);
+
+  for (let y = 0; y < canvas.height; y += 1) {
+    for (let x = 0; x < canvas.width; x += 1) {
+      const index = y * canvas.width + x;
+      const grain =
+        textureNoise(x, y, spec.seed) * 0.58 +
+        textureNoise(x + y * 0.22, y - x * 0.06, spec.seed + 18.2) * 0.28 +
+        Math.sin((x * 0.18 + y * 0.86 + spec.seed) * 0.72) * 0.08;
+      height[index] = clamp(grain, 0, 1);
+    }
+  }
+
+  for (let y = 0; y < canvas.height; y += 1) {
+    for (let x = 0; x < canvas.width; x += 1) {
+      const index = y * canvas.width + x;
+      const left = height[y * canvas.width + ((x - 1 + canvas.width) % canvas.width)];
+      const right = height[y * canvas.width + ((x + 1) % canvas.width)];
+      const up = height[((y - 1 + canvas.height) % canvas.height) * canvas.width + x];
+      const down = height[((y + 1) % canvas.height) * canvas.width + x];
+      const dx = (right - left) * spec.bumpStrength;
+      const dy = (down - up) * spec.bumpStrength;
+      const light = clamp(0.72 - dx * 0.42 - dy * 0.58 + height[index] * 0.34, 0, 1);
+      const color = light > 0.62
+        ? mixColor(spec.base, spec.highlight, (light - 0.62) / 0.38)
+        : mixColor(spec.shade, spec.base, light / 0.62);
+      const pixelIndex = index * 4;
+
+      image.data[pixelIndex] = color[0];
+      image.data[pixelIndex + 1] = color[1];
+      image.data[pixelIndex + 2] = color[2];
+      image.data[pixelIndex + 3] = 255;
+    }
+  }
+
+  textureCtx.putImageData(image, 0, 0);
+  textureCtx.globalCompositeOperation = "screen";
+  textureCtx.strokeStyle = colorString(spec.blade, 0.18);
+  textureCtx.lineWidth = 1;
+
+  const bladeCount = Math.floor(canvas.width * canvas.height * spec.bladeDensity * 0.04);
+  for (let i = 0; i < bladeCount; i += 1) {
+    const seed = spec.seed * 40 + i * 3.73;
+    const x = seededNoise(seed) * canvas.width;
+    const y = seededNoise(seed + 1.7) * canvas.height;
+    const length = (0.35 + seededNoise(seed + 2.8) * 0.9) * spec.bladeLength;
+    const lean = -0.55 + (seededNoise(seed + 4.2) - 0.5) * 0.44;
+
+    textureCtx.beginPath();
+    textureCtx.moveTo(x, y);
+    textureCtx.lineTo(x + Math.cos(lean) * length * 0.34, y + Math.sin(lean) * length);
+    textureCtx.stroke();
+  }
+
+  textureCtx.globalCompositeOperation = "multiply";
+  textureCtx.strokeStyle = "rgba(7, 28, 13, 0.12)";
+  const shadowBladeCount = Math.floor(bladeCount * 0.58);
+  for (let i = 0; i < shadowBladeCount; i += 1) {
+    const seed = spec.seed * 70 + i * 5.19;
+    const x = seededNoise(seed) * canvas.width;
+    const y = seededNoise(seed + 1.7) * canvas.height;
+    const length = (0.25 + seededNoise(seed + 2.8) * 0.76) * spec.bladeLength;
+    const lean = -0.4 + (seededNoise(seed + 4.2) - 0.5) * 0.52;
+
+    textureCtx.beginPath();
+    textureCtx.moveTo(x, y);
+    textureCtx.lineTo(x + Math.cos(lean) * length * 0.3, y + Math.sin(lean) * length);
+    textureCtx.stroke();
+  }
+
+  const pattern = ctx.createPattern(canvas, "repeat");
+  if (pattern) {
+    grassPatternCache.set(type, pattern);
+  }
+
+  return pattern;
+}
+
 function speed(ball: BallState) {
   return Math.hypot(ball.vx, ball.vy);
 }
@@ -542,7 +743,13 @@ function distanceToPin(ball: BallState) {
 }
 
 function isOutOfBounds(ball: BallState) {
-  return ball.x < 28 || ball.x > worldWidth - 28 || ball.y < 34 || ball.y > worldHeight - 34 || isInWater(ball);
+  return (
+    ball.x < 28 ||
+    ball.x > worldWidth - 28 ||
+    ball.y < 34 ||
+    ball.y > worldHeight - 34 ||
+    (useWaterPenalties && isInWater(ball))
+  );
 }
 
 function isInWater(ball: BallState) {
@@ -794,7 +1001,7 @@ const trees = createTreeLine();
 const waterEdgeDetails = createWaterEdgeDetails();
 
 function surfaceAt(x: number, y: number): Surface {
-  const priority: Surface["name"][] = ["bunker", "green", "tee", "rough", "fairway"];
+  const priority: Surface["name"][] = ["green", "tee", "rough", "fairway"];
   for (const type of priority) {
     const match = course.surfaces.find(
       (surface) => surface.type === type && pointInPolygon(x, y, surface.points),
@@ -823,7 +1030,7 @@ function drawMaintainedRough(
 
   for (const surface of course.surfaces) {
     traceSurface(ctx, surface, sx, sy);
-    ctx.strokeStyle = rough.color;
+    ctx.strokeStyle = createGrassPattern(ctx, "rough") ?? rough.color;
     ctx.lineWidth = roughCollarWidth * 2 * scale;
     ctx.stroke();
   }
@@ -836,14 +1043,13 @@ function drawSurfacePolygons(
   sx: (value: number) => number,
   sy: (value: number) => number,
 ) {
-  const drawOrder: Surface["name"][] = ["rough", "fairway", "tee", "green", "bunker"];
+  const drawOrder: Surface["name"][] = ["rough", "fairway", "tee", "green"];
   for (const type of drawOrder) {
     for (const surface of course.surfaces.filter((item) => item.type === type)) {
       paintSurfaceBase(ctx, surface, sx, sy);
 
       if (surface.type !== "rough") {
-        ctx.strokeStyle =
-          surface.type === "bunker" ? "rgba(91, 70, 34, 0.28)" : "rgba(18, 55, 28, 0.18)";
+        ctx.strokeStyle = "rgba(18, 55, 28, 0.18)";
         ctx.lineWidth = 1.8;
         ctx.stroke();
       }
@@ -857,7 +1063,8 @@ function paintSurfaceBase(
   sx: (value: number) => number,
   sy: (value: number) => number,
 ) {
-  ctx.fillStyle = materials[surface.type].color;
+  const surfaceType = surface.type === "bunker" ? "rough" : surface.type;
+  ctx.fillStyle = createGrassPattern(ctx, surfaceType) ?? materials[surfaceType].color;
   traceSurface(ctx, surface, sx, sy);
   ctx.fill();
 }
@@ -927,7 +1134,7 @@ function drawTerrainBase(
   height: number,
   scale: number,
 ) {
-  ctx.fillStyle = "#1f5c32";
+  ctx.fillStyle = createGrassPattern(ctx, "heavy") ?? "#1f5c32";
   ctx.fillRect(0, 0, width, height);
 
   const sunWash = ctx.createLinearGradient(width * 0.82, 0, width * 0.08, height);
@@ -1168,33 +1375,16 @@ function drawSurfaceTextures(
   sy: (value: number) => number,
   scale: number,
 ) {
-  const textureOrder: Surface["name"][] = ["rough", "fairway", "tee", "green", "bunker"];
+  const textureOrder: Surface["name"][] = ["rough", "fairway", "tee", "green"];
 
   for (const type of textureOrder) {
     for (const surface of course.surfaces.filter((item) => item.type === type)) {
       ctx.save();
       paintSurfaceBase(ctx, surface, sx, sy);
       clipSurface(ctx, surface, sx, sy);
-      drawSurfaceLight(ctx, sx, sy, scale, surface.type === "bunker" ? 0.55 : 0.85);
+      drawSurfaceLight(ctx, sx, sy, scale, 0.7);
 
-      if (surface.type === "bunker") {
-        ctx.strokeStyle = "rgba(111, 85, 39, 0.2)";
-        ctx.lineWidth = Math.max(0.55, 0.8 * scale);
-        for (let y = 34; y < worldHeight; y += 16) {
-          const curve = Math.sin(y * 0.045) * 6;
-          ctx.beginPath();
-          ctx.moveTo(sx(0), sy(y));
-          ctx.quadraticCurveTo(sx(worldWidth * 0.52), sy(y + curve), sx(worldWidth), sy(y - curve * 0.25));
-          ctx.stroke();
-        }
-
-        ctx.restore();
-        ctx.save();
-        ctx.strokeStyle = "rgba(83, 64, 31, 0.26)";
-        ctx.lineWidth = Math.max(1.2, 2.1 * scale);
-        traceSurface(ctx, surface, sx, sy);
-        ctx.stroke();
-      } else if (surface.type === "green") {
+      if (surface.type === "green") {
         ctx.strokeStyle = "rgba(236, 255, 225, 0.2)";
         ctx.lineWidth = Math.max(0.7, 1 * scale);
         for (let y = 0; y < worldHeight; y += 16) {
@@ -1351,12 +1541,16 @@ function drawGrass(
 ) {
   drawTerrainBase(ctx, sx, sy, width, height, scale);
 
-  drawWater(ctx, sx, sy, scale);
+  if (showWaterLayer) {
+    drawWater(ctx, sx, sy, scale);
+  }
   drawMaintainedRough(ctx, sx, sy, scale);
   drawSurfacePolygons(ctx, sx, sy);
   drawSurfaceTextures(ctx, sx, sy, scale);
-  drawWaterEdgeDetails(ctx, sx, sy, scale);
-  drawTrees(ctx, sx, sy, scale);
+  if (showSceneryLayer) {
+    drawWaterEdgeDetails(ctx, sx, sy, scale);
+    drawTrees(ctx, sx, sy, scale);
+  }
   drawAtmosphere(ctx, width, height);
   drawPin(ctx, sx, sy, scale);
 
@@ -1513,12 +1707,16 @@ function drawMiniMap(ctx: CanvasRenderingContext2D, width: number, height: numbe
   ctx.fill();
   ctx.clip();
 
-  ctx.fillStyle = heavy.color;
+  ctx.fillStyle = createGrassPattern(ctx, "heavy") ?? heavy.color;
   ctx.fillRect(left, top, mapWidth, mapHeight);
-  drawWater(ctx, sx, sy, scale, "mini");
+  if (showWaterLayer) {
+    drawWater(ctx, sx, sy, scale, "mini");
+  }
   drawMaintainedRough(ctx, sx, sy, scale);
   drawSurfacePolygons(ctx, sx, sy);
-  drawTrees(ctx, sx, sy, scale, "mini");
+  if (showSceneryLayer) {
+    drawTrees(ctx, sx, sy, scale, "mini");
+  }
   drawPin(ctx, sx, sy, scale);
 
   ctx.fillStyle = "#ffffff";
