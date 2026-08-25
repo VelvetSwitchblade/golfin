@@ -1,0 +1,117 @@
+{
+  "approved": true,
+  "mappingFidelity": 98,
+  "elevationFidelity": 0,
+  "elevationStatus": "not-connected",
+  "checks": [
+    {
+      "name": "hole-centreline",
+      "status": "pass",
+      "mandatory": true,
+      "weight": 4
+    },
+    {
+      "name": "hole-numbered",
+      "status": "pass",
+      "mandatory": true,
+      "weight": 4
+    },
+    {
+      "name": "hole-has-green",
+      "status": "pass",
+      "mandatory": true,
+      "weight": 4
+    },
+    {
+      "name": "hole-has-tee",
+      "status": "pass",
+      "mandatory": true,
+      "weight": 4
+    },
+    {
+      "name": "hole-has-fairway",
+      "status": "pass",
+      "mandatory": true,
+      "weight": 4
+    },
+    {
+      "name": "bunkers-known",
+      "status": "pass",
+      "mandatory": false,
+      "weight": 1
+    },
+    {
+      "name": "physical-water-known",
+      "status": "fail",
+      "mandatory": false,
+      "weight": 1
+    },
+    {
+      "name": "sensible-yardage",
+      "status": "pass",
+      "mandatory": true,
+      "weight": 4
+    },
+    {
+      "name": "osm:845710620-area",
+      "status": "pass",
+      "mandatory": true,
+      "weight": 4
+    },
+    {
+      "name": "osm:845710621-area",
+      "status": "pass",
+      "mandatory": true,
+      "weight": 4
+    },
+    {
+      "name": "osm:845710622-area",
+      "status": "pass",
+      "mandatory": true,
+      "weight": 4
+    },
+    {
+      "name": "osm:845710623-area",
+      "status": "pass",
+      "mandatory": false,
+      "weight": 1
+    },
+    {
+      "name": "osm:845710624-area",
+      "status": "pass",
+      "mandatory": false,
+      "weight": 1
+    },
+    {
+      "name": "osm:845710625-area",
+      "status": "pass",
+      "mandatory": true,
+      "weight": 4
+    },
+    {
+      "name": "osm:845710625-contains-pin",
+      "status": "pass",
+      "mandatory": true,
+      "weight": 4
+    },
+    {
+      "name": "osm:845710626-area",
+      "status": "pass",
+      "mandatory": false,
+      "weight": 1
+    },
+    {
+      "name": "synthetic-water:1-area",
+      "status": "pass",
+      "mandatory": false,
+      "weight": 1
+    },
+    {
+      "name": "synthetic-water:2-area",
+      "status": "pass",
+      "mandatory": false,
+      "weight": 1
+    }
+  ],
+  "failures": []
+}

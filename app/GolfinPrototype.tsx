@@ -700,7 +700,6 @@ function colorString(color: [number, number, number], alpha = 1) {
 const grassPatternCache = new Map<string, CanvasPattern>();
 const textureImageCache = new Map<string, HTMLImageElement>();
 const courseAssetBase = "/courses/goodwood-park-1";
-const terrainPlateSource = `${courseAssetBase}/aaa-terrain-plate.png?v=552049e2`;
 const terrainAssetSources = {
   normal: `${courseAssetBase}/normal.png`,
   masks: `${courseAssetBase}/masks.png`,
@@ -978,32 +977,6 @@ function createTerrainTexture(gl: WebGLRenderingContext, image: HTMLImageElement
 
 function terrainAssetsReady() {
   return Object.values(terrainAssetSources).every((src) => imageReady(terrainImage(src)));
-}
-
-function drawTerrainPlate(
-  ctx: CanvasRenderingContext2D,
-  camera: CameraState,
-  width: number,
-  height: number,
-) {
-  const plate = terrainImage(terrainPlateSource);
-  if (!imageReady(plate)) {
-    return false;
-  }
-
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "high";
-  ctx.fillStyle = "#15290f";
-  ctx.fillRect(0, 0, width, height);
-  ctx.drawImage(
-    plate,
-    width / 2 - camera.x * camera.zoom,
-    height / 2 - camera.y * camera.zoom,
-    worldWidth * camera.zoom,
-    worldHeight * camera.zoom,
-  );
-
-  return true;
 }
 
 function createTerrainWebGlState(canvas: HTMLCanvasElement) {
@@ -2467,18 +2440,9 @@ export function GolfinPrototype() {
         : 0;
 
     ctx.clearRect(0, 0, width, height);
-    const plateRendered = drawTerrainPlate(ctx, camera, width, height);
-    if (plateRendered && terrainCanvasRef.current) {
-      terrainCanvasRef.current.style.opacity = "0";
-    } else if (terrainCanvasRef.current) {
-      terrainCanvasRef.current.style.opacity = "1";
-    }
-    const terrainRendered =
-      plateRendered || renderTerrainWebGl(terrainCanvasRef.current, camera, width, height, dpr, timestamp);
+    const terrainRendered = renderTerrainWebGl(terrainCanvasRef.current, camera, width, height, dpr, timestamp);
 
-    if (plateRendered) {
-      drawPin(ctx, sx, sy, camera.zoom);
-    } else if (terrainRendered) {
+    if (terrainRendered) {
       drawAtmosphere(ctx, width, height);
       drawPin(ctx, sx, sy, camera.zoom);
     } else {

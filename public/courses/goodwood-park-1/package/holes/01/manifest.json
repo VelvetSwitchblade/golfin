@@ -1,0 +1,19 @@
+{
+  "schema": "golfin.hole-package.v0",
+  "compiler": "0.1.0",
+  "build": "47fb16eb7e072f9b",
+  "immutable": true,
+  "sourcePolicy": "authoritative-geometry-procedural-rendering",
+  "bounds": {
+    "minX": 65.086,
+    "minY": 8.229,
+    "maxX": 269.32,
+    "maxY": 423.469
+  },
+  "assets": {
+    "surfaceMap": "surface-map.json",
+    "gameplay": "gameplay.json",
+    "collision": "collision.json",
+    "validation": "validation.json"
+  }
+}

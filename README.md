@@ -23,6 +23,15 @@ npm run dev
 npm run build
 ```
 
+## Product Shape
+
+Golfin now has two explicit sides:
+
+- **Golf Course Compiler**: backend tooling that takes authoritative geographic data, normalizes it into a game-specific semantic model, validates fidelity, generates surface/collision/gameplay packages, and preserves provenance.
+- **Game**: the browser client that loads compiled hole packages and runs the actual golf experience.
+
+See [docs/course-compiler.md](docs/course-compiler.md) for the compiler architecture.
+
 ## Current Prototype
 
 The current version is a single-hole physics prototype:
@@ -36,7 +45,9 @@ The current version is a single-hole physics prototype:
 ## Project Shape
 
 - edit site code under `app/`
-- compile player-facing course assets with `scripts/compile-hole.mjs`
+- compiler code lives under `compiler/`
+- compile legacy visual assets with `scripts/compile-hole.mjs`
+- compile game-ready course package metadata with `npm run compile:course`
 - generated hole assets live under `public/courses/goodwood-park-1/`
 - `.openai/hosting.json` declares optional Sites D1 and R2 bindings
 - `vite.config.ts` simulates declared bindings for local development
@@ -49,4 +60,6 @@ The current version is a single-hole physics prototype:
 - `npm run build`: verify the vinext build
 - `npm test`: build and smoke test the rendered page
 - `npm run compile:hole`: regenerate the baked Goodwood hole assets
+- `npm run compile:course`: export the compiler-owned Goodwood hole package
+- `npm run test:compiler`: run compiler pipeline tests
 - `npm run db:generate`: generate Drizzle migrations after schema changes

@@ -1,0 +1,28 @@
+{
+  "courseId": "goodwood-the-park",
+  "name": "Goodwood The Park",
+  "projection": "legacy-local-cartesian",
+  "units": "metres",
+  "origin": {
+    "lat": null,
+    "lon": null,
+    "elevation": null
+  },
+  "biome": "temperate_parkland",
+  "holes": [
+    {
+      "id": "goodwood-park-1",
+      "number": 1,
+      "par": 4,
+      "yards": 389
+    }
+  ],
+  "sourceVersions": {
+    "legacyPrototypeHole": "ecf3fa7c1b3ebe92",
+    "compiler": "0.1.0"
+  },
+  "attributions": [
+    "Map geometry derived from OpenStreetMap contributors where available."
+  ],
+  "build": "47fb16eb7e072f9b"
+}
