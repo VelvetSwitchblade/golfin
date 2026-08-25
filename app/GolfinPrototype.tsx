@@ -1132,12 +1132,10 @@ function drawMaintainedRough(
 
   for (const surface of course.surfaces) {
     traceSurface(ctx, surface, sx, sy);
-    ctx.filter = `blur(${Math.max(0.6, 1.8 * scale)}px)`;
-    ctx.globalAlpha = 0.96;
+    ctx.globalAlpha = 1;
     ctx.strokeStyle = worldGrassPattern(ctx, "rough", sx, sy, scale) ?? rough.color;
     ctx.lineWidth = roughCollarWidth * 1.9 * scale;
     ctx.stroke();
-    ctx.filter = "none";
   }
 
   ctx.globalAlpha = 1;
@@ -1260,6 +1258,78 @@ function drawSurfaceLight(
   light.addColorStop(1, `rgba(5, 29, 17, ${0.2 * strength})`);
   ctx.fillStyle = light;
   ctx.fillRect(sx(0), sy(0), worldWidth * scale, worldHeight * scale);
+}
+
+function drawSurfaceEmboss(
+  ctx: CanvasRenderingContext2D,
+  surface: CourseSurface,
+  sx: (value: number) => number,
+  sy: (value: number) => number,
+  scale: number,
+) {
+  const surfaceDepth: Partial<Record<Surface["name"], { width: number; offset: number; light: number; shade: number; seam: number }>> = {
+    rough: { width: 2.4, offset: 1.25, light: 0.1, shade: 0.15, seam: 0.09 },
+    fairway: { width: 3.1, offset: 1.65, light: 0.14, shade: 0.2, seam: 0.12 },
+    tee: { width: 2.6, offset: 1.45, light: 0.13, shade: 0.18, seam: 0.11 },
+    green: { width: 2.4, offset: 1.35, light: 0.13, shade: 0.17, seam: 0.1 },
+  };
+  const rule = surfaceDepth[surface.type];
+
+  if (!rule) {
+    return;
+  }
+
+  const lightX = -sunVector.x * rule.offset * scale;
+  const lightY = -sunVector.y * rule.offset * scale;
+  const shadeX = sunVector.x * rule.offset * scale;
+  const shadeY = sunVector.y * rule.offset * scale;
+  const lineWidth = Math.max(0.9, rule.width * scale);
+
+  ctx.save();
+  ctx.lineJoin = "round";
+  ctx.lineCap = "round";
+  ctx.globalCompositeOperation = "screen";
+  ctx.translate(lightX, lightY);
+  traceSurface(ctx, surface, sx, sy);
+  ctx.strokeStyle = `rgba(245, 255, 188, ${rule.light})`;
+  ctx.lineWidth = lineWidth;
+  ctx.stroke();
+  ctx.restore();
+
+  ctx.save();
+  ctx.lineJoin = "round";
+  ctx.lineCap = "round";
+  ctx.globalCompositeOperation = "multiply";
+  ctx.translate(shadeX, shadeY);
+  traceSurface(ctx, surface, sx, sy);
+  ctx.strokeStyle = `rgba(4, 24, 12, ${rule.shade})`;
+  ctx.lineWidth = lineWidth;
+  ctx.stroke();
+  ctx.restore();
+
+  ctx.save();
+  ctx.lineJoin = "round";
+  ctx.lineCap = "round";
+  traceSurface(ctx, surface, sx, sy);
+  ctx.strokeStyle = `rgba(15, 49, 24, ${rule.seam})`;
+  ctx.lineWidth = Math.max(0.45, 0.75 * scale);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawSurfaceEmbosses(
+  ctx: CanvasRenderingContext2D,
+  sx: (value: number) => number,
+  sy: (value: number) => number,
+  scale: number,
+) {
+  const embossedTypes: Surface["name"][] = ["rough", "fairway", "tee", "green"];
+
+  for (const type of embossedTypes) {
+    for (const surface of course.surfaces.filter((item) => item.type === type)) {
+      drawSurfaceEmboss(ctx, surface, sx, sy, scale);
+    }
+  }
 }
 
 function drawLiveGrassEdges(
@@ -1674,6 +1744,7 @@ function drawGrass(
   drawMaintainedRough(ctx, sx, sy, scale);
   drawSurfacePolygons(ctx, sx, sy, scale);
   drawSurfaceTextures(ctx, sx, sy, scale);
+  drawSurfaceEmbosses(ctx, sx, sy, scale);
   if (renderRules.drawGrassEdges) {
     drawLiveGrassEdges(ctx, sx, sy, scale, timestamp);
   }
