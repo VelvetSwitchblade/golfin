@@ -11,7 +11,7 @@ const worldHeight = 1250;
 const scorecardHoleYards = 389;
 const roughCollarWidth = 58;
 const bunkerScale = 1.5;
-const assetScale = 1.35;
+const assetScale = 2.4;
 const width = Math.ceil(worldWidth * assetScale);
 const height = Math.ceil(worldHeight * assetScale);
 const sun = normalize([-0.62, 0.78, 0.68]);
@@ -261,6 +261,7 @@ function renderAssets() {
   const normal = new Uint8Array(width * height * 4);
   const masks = new Uint8Array(width * height * 4);
   const shadow = new Uint8Array(width * height * 4);
+  const objects = new Uint8Array(width * height * 4);
   const heightField = new Float32Array(width * height);
 
   for (let py = 0; py < height; py += 1) {
@@ -329,7 +330,85 @@ function renderAssets() {
     }
   }
 
-  return { terrain, normal, masks, shadow };
+  renderObjects(objects);
+
+  return { terrain, normal, masks, shadow, objects };
+}
+
+function blendPixel(buffer, px, py, color, alpha) {
+  if (px < 0 || px >= width || py < 0 || py >= height || alpha <= 0) {
+    return;
+  }
+
+  const out = (py * width + px) * 4;
+  const existingAlpha = buffer[out + 3] / 255;
+  const finalAlpha = alpha + existingAlpha * (1 - alpha);
+  if (finalAlpha <= 0) {
+    return;
+  }
+
+  buffer[out] = Math.round((color[0] * alpha + buffer[out] * existingAlpha * (1 - alpha)) / finalAlpha);
+  buffer[out + 1] = Math.round((color[1] * alpha + buffer[out + 1] * existingAlpha * (1 - alpha)) / finalAlpha);
+  buffer[out + 2] = Math.round((color[2] * alpha + buffer[out + 2] * existingAlpha * (1 - alpha)) / finalAlpha);
+  buffer[out + 3] = Math.round(finalAlpha * 255);
+}
+
+function drawSoftDisc(buffer, cx, cy, rx, ry, color, alpha, seed = 0) {
+  const minX = Math.floor((cx - rx) * assetScale);
+  const maxX = Math.ceil((cx + rx) * assetScale);
+  const minY = Math.floor((cy - ry) * assetScale);
+  const maxY = Math.ceil((cy + ry) * assetScale);
+
+  for (let py = minY; py <= maxY; py += 1) {
+    for (let px = minX; px <= maxX; px += 1) {
+      const x = px / assetScale;
+      const y = py / assetScale;
+      const dx = (x - cx) / rx;
+      const dy = (y - cy) / ry;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      if (distance > 1) {
+        continue;
+      }
+
+      const grain = 0.72 + fbm(x * 0.08, y * 0.08, seed, 4) * 0.42;
+      const edge = 1 - smoothstep(0.62, 1, distance);
+      blendPixel(buffer, px, py, color.map((value) => clamp(value * grain, 0, 255)), alpha * edge);
+    }
+  }
+}
+
+function renderObjects(buffer) {
+  const { trees, rocks } = createObjects();
+  for (const tree of trees) {
+    const shadowColor = [4, 18, 8];
+    drawSoftDisc(buffer, tree.x + sun[0] * tree.r * 2.1, tree.y + sun[1] * tree.r * 2.35, tree.r * 1.6, tree.r * 0.58, shadowColor, 0.34, tree.x);
+  }
+
+  for (const rock of rocks) {
+    drawSoftDisc(buffer, rock.x + sun[0] * rock.r * 0.8, rock.y + sun[1] * rock.r * 0.9, rock.r * 1.2, rock.r * 0.56, [6, 20, 12], 0.22, rock.x);
+    drawSoftDisc(buffer, rock.x, rock.y, rock.r * 0.95, rock.r * 0.62, [130, 132, 102], 0.88, rock.y);
+    drawSoftDisc(buffer, rock.x - rock.r * 0.28, rock.y - rock.r * 0.24, rock.r * 0.42, rock.r * 0.2, [208, 202, 154], 0.56, rock.x + rock.y);
+  }
+
+  for (const tree of trees) {
+    const lobes = 5;
+    for (let i = 0; i < lobes; i += 1) {
+      const angle = (Math.PI * 2 * i) / lobes + hash(tree.x, tree.y, i) * 0.9;
+      const spread = tree.r * (0.08 + hash(tree.x, i, tree.y) * 0.34);
+      const color = i % 3 === 0 ? [42, 116, 39] : i % 3 === 1 ? [25, 82, 34] : [70, 142, 45];
+      drawSoftDisc(
+        buffer,
+        tree.x + Math.cos(angle) * spread,
+        tree.y + Math.sin(angle) * spread,
+        tree.r * (0.58 + hash(i, tree.x, 8) * 0.32),
+        tree.r * (0.52 + hash(i, tree.y, 12) * 0.24),
+        color,
+        0.94,
+        tree.x * 0.2 + i,
+      );
+    }
+    drawSoftDisc(buffer, tree.x - tree.r * 0.24, tree.y - tree.r * 0.32, tree.r * 0.28, tree.r * 0.18, [186, 220, 95], 0.34, tree.x);
+  }
 }
 
 function writePng(path, data, imageWidth, imageHeight) {
@@ -426,6 +505,7 @@ writePng(join(outDir, "terrain-base.png"), assets.terrain, width, height);
 writePng(join(outDir, "normal.png"), assets.normal, width, height);
 writePng(join(outDir, "masks.png"), assets.masks, width, height);
 writePng(join(outDir, "shadow.png"), assets.shadow, width, height);
+writePng(join(outDir, "objects.png"), assets.objects, width, height);
 writeFileSync(join(outDir, "hole.json"), `${JSON.stringify({
   name: course.name,
   ref: course.ref,
@@ -433,7 +513,7 @@ writeFileSync(join(outDir, "hole.json"), `${JSON.stringify({
   yards: scorecardHoleYards,
   world: { width: worldWidth, height: worldHeight },
   worldUnitsPerYard,
-  assets: { width, height, scale: assetScale },
+  assets: { width, height, scale: assetScale, layers: ["terrain-base", "normal", "masks", "shadow", "objects"] },
   holeLine: course.holeLine,
   tee: course.holeLine[0],
   pin: course.pin,

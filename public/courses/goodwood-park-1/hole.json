@@ -9,9 +9,16 @@
   },
   "worldUnitsPerYard": 2.4445546280626664,
   "assets": {
-    "width": 1215,
-    "height": 1688,
-    "scale": 1.35
+    "width": 2160,
+    "height": 3000,
+    "scale": 2.4,
+    "layers": [
+      "terrain-base",
+      "normal",
+      "masks",
+      "shadow",
+      "objects"
+    ]
   },
   "holeLine": [
     [

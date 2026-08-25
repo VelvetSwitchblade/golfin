@@ -48,5 +48,7 @@ test("compiled Goodwood hole assets are present", async () => {
     access("public/courses/goodwood-park-1/normal.png"),
     access("public/courses/goodwood-park-1/masks.png"),
     access("public/courses/goodwood-park-1/shadow.png"),
+    access("public/courses/goodwood-park-1/objects.png"),
+    access("public/courses/goodwood-park-1/aaa-terrain-plate.png"),
   ]);
 });
