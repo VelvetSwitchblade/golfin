@@ -886,6 +886,7 @@ function drawWorldPatternFill(
 function createSurfaceMask(
   scale: number,
   paint: (ctx: CanvasRenderingContext2D, sx: (value: number) => number, sy: (value: number) => number) => void,
+  featherWorld = 0,
 ) {
   const mask = createWorldCanvas(scale);
   const maskCtx = mask.getContext("2d");
@@ -895,7 +896,11 @@ function createSurfaceMask(
 
   const sx = (value: number) => value * scale;
   const sy = (value: number) => value * scale;
+  if (featherWorld > 0) {
+    maskCtx.filter = `blur(${featherWorld * scale}px)`;
+  }
   paint(maskCtx, sx, sy);
+  maskCtx.filter = "none";
 
   return mask;
 }
@@ -939,7 +944,7 @@ function makeHoleMaterialRender(scale: number) {
       traceSurface(maskCtx, surface, maskSx, maskSy);
       maskCtx.stroke();
     }
-  });
+  }, 6);
 
   if (roughMask) {
     paintMaskedGrassLayer(materialCtx, "rough", roughMask, scale);
@@ -953,7 +958,7 @@ function makeHoleMaterialRender(scale: number) {
         traceSurface(maskCtx, surface, maskSx, maskSy);
         maskCtx.fill();
       }
-    });
+    }, type === "fairway" ? 3.8 : 2.8);
 
     if (mask) {
       paintMaskedGrassLayer(materialCtx, type, mask, scale);
@@ -1895,6 +1900,7 @@ function drawGrass(
   const compiled = getCompiledHoleRender();
 
   if (compiled) {
+    drawTerrainBase(ctx, sx, sy, width, height, scale);
     drawCompiledTerrain(ctx, sx, sy, scale, compiled);
 
     if (renderRules.drawWater) {
