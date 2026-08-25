@@ -40,11 +40,23 @@ button {
   width: 100vw;
 }
 
+.terrain-canvas,
 .physics-canvas {
+  inset: 0;
+  position: absolute;
   display: block;
   height: 100%;
-  touch-action: none;
   width: 100%;
+}
+
+.terrain-canvas {
+  pointer-events: none;
+  z-index: 0;
+}
+
+.physics-canvas {
+  touch-action: none;
+  z-index: 1;
 }
 
 .club-selector {
@@ -56,6 +68,7 @@ button {
   position: absolute;
   top: 104px;
   width: 48px;
+  z-index: 3;
 }
 
 .club-option {
@@ -120,6 +133,7 @@ button {
   padding: 0 34px;
   position: absolute;
   transform: translateX(-50%);
+  z-index: 3;
 }
 
 .physics-swing:disabled {

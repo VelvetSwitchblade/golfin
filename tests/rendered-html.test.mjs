@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { access, readFile } from "node:fs/promises";
 import test from "node:test";
 
 async function render() {
@@ -33,4 +34,19 @@ test("server-renders the Golfin shell", async () => {
   assert.match(html, /Swing/);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton|Your site is taking shape/);
   assert.doesNotMatch(html, /Tabletop|Phone Controller|Local Co-op/);
+});
+
+test("compiled Goodwood hole assets are present", async () => {
+  const holeJson = JSON.parse(await readFile("public/courses/goodwood-park-1/hole.json", "utf8"));
+  assert.equal(holeJson.name, "Goodwood The Park - Hole 1");
+  assert.equal(holeJson.yards, 389);
+  assert.deepEqual(holeJson.world, { width: 900, height: 1250 });
+  assert.ok(holeJson.worldUnitsPerYard > 0);
+
+  await Promise.all([
+    access("public/courses/goodwood-park-1/terrain-base.png"),
+    access("public/courses/goodwood-park-1/normal.png"),
+    access("public/courses/goodwood-park-1/masks.png"),
+    access("public/courses/goodwood-park-1/shadow.png"),
+  ]);
 });

@@ -71,9 +71,31 @@ type SurfaceEmbossRule = {
   shade: number;
 };
 
-type CompiledHoleRender = {
-  scale: number;
-  material: HTMLCanvasElement;
+type TerrainTextureSet = {
+  base: WebGLTexture;
+  normal: WebGLTexture;
+  masks: WebGLTexture;
+  shadow: WebGLTexture;
+};
+
+type TerrainWebGlState = {
+  canvas: HTMLCanvasElement;
+  gl: WebGLRenderingContext;
+  program: WebGLProgram;
+  positionBuffer: WebGLBuffer;
+  textures: TerrainTextureSet;
+  uniforms: {
+    base: WebGLUniformLocation | null;
+    normal: WebGLUniformLocation | null;
+    masks: WebGLUniformLocation | null;
+    shadow: WebGLUniformLocation | null;
+    viewport: WebGLUniformLocation | null;
+    camera: WebGLUniformLocation | null;
+    worldSize: WebGLUniformLocation | null;
+    zoom: WebGLUniformLocation | null;
+    time: WebGLUniformLocation | null;
+    wind: WebGLUniformLocation | null;
+  };
 };
 
 type CourseData = {
@@ -669,8 +691,15 @@ function colorString(color: [number, number, number], alpha = 1) {
 
 const grassPatternCache = new Map<string, CanvasPattern>();
 const textureImageCache = new Map<string, HTMLImageElement>();
-let compiledHoleRender: CompiledHoleRender | null = null;
-const compiledHoleScale = 2;
+const courseAssetBase = "/courses/goodwood-park-1";
+const terrainAssetSources = {
+  base: `${courseAssetBase}/terrain-base.png`,
+  normal: `${courseAssetBase}/normal.png`,
+  masks: `${courseAssetBase}/masks.png`,
+  shadow: `${courseAssetBase}/shadow.png`,
+};
+const terrainImageCache = new Map<string, HTMLImageElement>();
+let terrainWebGlState: TerrainWebGlState | null = null;
 
 function textureImage(src: string) {
   const cached = textureImageCache.get(src);
@@ -682,6 +711,19 @@ function textureImage(src: string) {
   image.decoding = "async";
   image.src = src;
   textureImageCache.set(src, image);
+  return image;
+}
+
+function terrainImage(src: string) {
+  const cached = terrainImageCache.get(src);
+  if (cached) {
+    return cached;
+  }
+
+  const image = new Image();
+  image.decoding = "async";
+  image.src = src;
+  terrainImageCache.set(src, image);
   return image;
 }
 
@@ -857,143 +899,258 @@ function worldGrassPattern(
   return pattern;
 }
 
-function grassTexturesReady() {
-  return Object.values(grassTextureSpecs).every((spec) =>
-    imageReady(textureImage(spec.albedoSrc)) && imageReady(textureImage(spec.heightSrc))
-  );
-}
-
-function createWorldCanvas(scale: number) {
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.ceil(worldWidth * scale);
-  canvas.height = Math.ceil(worldHeight * scale);
-
-  return canvas;
-}
-
-function drawWorldPatternFill(
-  ctx: CanvasRenderingContext2D,
-  type: Exclude<Surface["name"], "bunker">,
-  scale: number,
-) {
-  const sx = (value: number) => value * scale;
-  const sy = (value: number) => value * scale;
-
-  ctx.fillStyle = worldGrassPattern(ctx, type, sx, sy, scale) ?? materials[type].color;
-  ctx.fillRect(0, 0, worldWidth * scale, worldHeight * scale);
-}
-
-function createSurfaceMask(
-  scale: number,
-  paint: (ctx: CanvasRenderingContext2D, sx: (value: number) => number, sy: (value: number) => number) => void,
-  featherWorld = 0,
-) {
-  const mask = createWorldCanvas(scale);
-  const maskCtx = mask.getContext("2d");
-  if (!maskCtx) {
+function createShader(gl: WebGLRenderingContext, type: number, source: string) {
+  const shader = gl.createShader(type);
+  if (!shader) {
     return null;
   }
 
-  const sx = (value: number) => value * scale;
-  const sy = (value: number) => value * scale;
-  if (featherWorld > 0) {
-    maskCtx.filter = `blur(${featherWorld * scale}px)`;
-  }
-  paint(maskCtx, sx, sy);
-  maskCtx.filter = "none";
-
-  return mask;
-}
-
-function paintMaskedGrassLayer(
-  targetCtx: CanvasRenderingContext2D,
-  type: Exclude<Surface["name"], "bunker">,
-  mask: HTMLCanvasElement,
-  scale: number,
-) {
-  const layer = createWorldCanvas(scale);
-  const layerCtx = layer.getContext("2d");
-  if (!layerCtx) {
-    return;
-  }
-
-  drawWorldPatternFill(layerCtx, type, scale);
-  layerCtx.globalCompositeOperation = "destination-in";
-  layerCtx.drawImage(mask, 0, 0);
-  targetCtx.drawImage(layer, 0, 0);
-}
-
-function makeHoleMaterialRender(scale: number) {
-  const material = createWorldCanvas(scale);
-  const materialCtx = material.getContext("2d");
-  if (!materialCtx) {
+  gl.shaderSource(shader, source);
+  gl.compileShader(shader);
+  if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+    gl.deleteShader(shader);
     return null;
   }
 
-  const sx = (value: number) => value * scale;
-  const sy = (value: number) => value * scale;
+  return shader;
+}
 
-  drawWorldPatternFill(materialCtx, "heavy", scale);
+function createProgram(gl: WebGLRenderingContext, vertexSource: string, fragmentSource: string) {
+  const vertexShader = createShader(gl, gl.VERTEX_SHADER, vertexSource);
+  const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, fragmentSource);
+  if (!vertexShader || !fragmentShader) {
+    return null;
+  }
 
-  const roughMask = createSurfaceMask(scale, (maskCtx, maskSx, maskSy) => {
-    maskCtx.lineJoin = "round";
-    maskCtx.lineCap = "round";
-    maskCtx.strokeStyle = "#fff";
-    maskCtx.lineWidth = roughCollarWidth * 1.9 * scale;
-    for (const surface of course.surfaces) {
-      traceSurface(maskCtx, surface, maskSx, maskSy);
-      maskCtx.stroke();
+  const program = gl.createProgram();
+  if (!program) {
+    return null;
+  }
+
+  gl.attachShader(program, vertexShader);
+  gl.attachShader(program, fragmentShader);
+  gl.linkProgram(program);
+  gl.deleteShader(vertexShader);
+  gl.deleteShader(fragmentShader);
+
+  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+    gl.deleteProgram(program);
+    return null;
+  }
+
+  return program;
+}
+
+function createTerrainTexture(gl: WebGLRenderingContext, image: HTMLImageElement) {
+  const texture = gl.createTexture();
+  if (!texture) {
+    return null;
+  }
+
+  gl.bindTexture(gl.TEXTURE_2D, texture);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+
+  return texture;
+}
+
+function terrainAssetsReady() {
+  return Object.values(terrainAssetSources).every((src) => imageReady(terrainImage(src)));
+}
+
+function createTerrainWebGlState(canvas: HTMLCanvasElement) {
+  const gl = canvas.getContext("webgl", {
+    alpha: false,
+    antialias: false,
+    depth: false,
+    stencil: false,
+  });
+  if (!gl || !terrainAssetsReady()) {
+    return null;
+  }
+
+  const vertexSource = `
+    attribute vec2 a_position;
+    varying vec2 v_clip;
+
+    void main() {
+      v_clip = a_position;
+      gl_Position = vec4(a_position, 0.0, 1.0);
     }
-  }, 6);
+  `;
+  const fragmentSource = `
+    precision mediump float;
 
-  if (roughMask) {
-    paintMaskedGrassLayer(materialCtx, "rough", roughMask, scale);
-  }
+    uniform sampler2D u_base;
+    uniform sampler2D u_normal;
+    uniform sampler2D u_masks;
+    uniform sampler2D u_shadow;
+    uniform vec2 u_viewport;
+    uniform vec2 u_camera;
+    uniform vec2 u_worldSize;
+    uniform float u_zoom;
+    uniform float u_time;
+    uniform vec2 u_wind;
+    varying vec2 v_clip;
 
-  const drawOrder: Array<Exclude<Surface["name"], "bunker" | "heavy">> = ["fairway", "tee", "green"];
-  for (const type of drawOrder) {
-    const mask = createSurfaceMask(scale, (maskCtx, maskSx, maskSy) => {
-      maskCtx.fillStyle = "#fff";
-      for (const surface of course.surfaces.filter((item) => item.type === type)) {
-        traceSurface(maskCtx, surface, maskSx, maskSy);
-        maskCtx.fill();
+    float hash(vec2 p) {
+      return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+    }
+
+    float noise(vec2 p) {
+      vec2 i = floor(p);
+      vec2 f = fract(p);
+      vec2 u = f * f * (3.0 - 2.0 * f);
+      return mix(
+        mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x),
+        mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x),
+        u.y
+      );
+    }
+
+    float fbm(vec2 p) {
+      float value = 0.0;
+      float amplitude = 0.5;
+      for (int i = 0; i < 4; i++) {
+        value += noise(p) * amplitude;
+        p *= 2.04;
+        amplitude *= 0.52;
       }
-    }, type === "fairway" ? 3.8 : 2.8);
-
-    if (mask) {
-      paintMaskedGrassLayer(materialCtx, type, mask, scale);
+      return value;
     }
+
+    vec3 oobGrass(vec2 world) {
+      float large = fbm(world * 0.018);
+      float fine = fbm(world * 0.085 + 21.0);
+      float blade = sin(dot(world, vec2(0.62, -0.28)) * 0.9 + fine * 2.4);
+      vec3 base = vec3(0.13, 0.36, 0.17);
+      return base + (large - 0.5) * 0.09 + blade * 0.018;
+    }
+
+    void main() {
+      vec2 pixel = vec2(
+        (v_clip.x * 0.5 + 0.5) * u_viewport.x,
+        (1.0 - (v_clip.y * 0.5 + 0.5)) * u_viewport.y
+      );
+      vec2 world = u_camera + (pixel - u_viewport * 0.5) / u_zoom;
+      bool insideWorld = world.x >= 0.0 && world.y >= 0.0 && world.x <= u_worldSize.x && world.y <= u_worldSize.y;
+      vec2 uv = vec2(world.x / u_worldSize.x, world.y / u_worldSize.y);
+      vec4 masks = insideWorld ? texture2D(u_masks, uv) : vec4(0.0);
+      vec3 normal = insideWorld ? texture2D(u_normal, uv).rgb * 2.0 - 1.0 : vec3(0.0, 0.0, 1.0);
+      vec3 base = insideWorld ? texture2D(u_base, uv).rgb : oobGrass(world);
+      float shadow = insideWorld ? texture2D(u_shadow, uv).r : 0.88;
+      vec3 lightDir = normalize(vec3(-0.62, 0.78, 0.72));
+      float terrainLight = clamp(dot(normal, lightDir), 0.0, 1.0);
+      float grassMotion = sin(dot(world, normalize(u_wind)) * 0.08 + u_time * 1.2) * 0.012;
+      float water = masks.a;
+      float ripple = sin(dot(world, normalize(u_wind.yx * vec2(-1.0, 1.0))) * 0.16 + u_time * 2.6);
+      vec3 waterTint = vec3(0.06, 0.42, 0.55) + ripple * 0.035;
+      vec3 color = mix(base, waterTint, water * 0.45);
+      color *= 0.78 + terrainLight * 0.26;
+      color *= 0.76 + shadow * 0.24;
+      color += grassMotion * (1.0 - water);
+      color += max(0.0, ripple) * water * 0.08;
+      gl_FragColor = vec4(color, 1.0);
+    }
+  `;
+
+  const program = createProgram(gl, vertexSource, fragmentSource);
+  const positionBuffer = gl.createBuffer();
+  if (!program || !positionBuffer) {
+    return null;
   }
 
-  for (const surface of course.surfaces.filter((item) => item.type !== "bunker")) {
-    drawSurfaceEmboss(materialCtx, surface, sx, sy, scale);
+  const base = createTerrainTexture(gl, terrainImage(terrainAssetSources.base));
+  const normal = createTerrainTexture(gl, terrainImage(terrainAssetSources.normal));
+  const masks = createTerrainTexture(gl, terrainImage(terrainAssetSources.masks));
+  const shadow = createTerrainTexture(gl, terrainImage(terrainAssetSources.shadow));
+  if (!base || !normal || !masks || !shadow) {
+    return null;
   }
 
-  drawSurfaceLight(materialCtx, sx, sy, scale, 0.58);
+  gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
 
-  return material;
+  return {
+    canvas,
+    gl,
+    program,
+    positionBuffer,
+    textures: { base, normal, masks, shadow },
+    uniforms: {
+      base: gl.getUniformLocation(program, "u_base"),
+      normal: gl.getUniformLocation(program, "u_normal"),
+      masks: gl.getUniformLocation(program, "u_masks"),
+      shadow: gl.getUniformLocation(program, "u_shadow"),
+      viewport: gl.getUniformLocation(program, "u_viewport"),
+      camera: gl.getUniformLocation(program, "u_camera"),
+      worldSize: gl.getUniformLocation(program, "u_worldSize"),
+      zoom: gl.getUniformLocation(program, "u_zoom"),
+      time: gl.getUniformLocation(program, "u_time"),
+      wind: gl.getUniformLocation(program, "u_wind"),
+    },
+  };
 }
 
-function getCompiledHoleRender() {
-  if (compiledHoleRender) {
-    return compiledHoleRender;
+function renderTerrainWebGl(
+  canvas: HTMLCanvasElement | null,
+  camera: CameraState,
+  width: number,
+  height: number,
+  dpr: number,
+  timestamp: number,
+) {
+  if (!canvas) {
+    return false;
   }
 
-  if (!grassTexturesReady()) {
-    return null;
+  canvas.width = Math.max(1, Math.round(width * dpr));
+  canvas.height = Math.max(1, Math.round(height * dpr));
+
+  if (!terrainWebGlState || terrainWebGlState.canvas !== canvas) {
+    terrainWebGlState = createTerrainWebGlState(canvas);
   }
 
-  const material = makeHoleMaterialRender(compiledHoleScale);
-  if (!material) {
-    return null;
+  const state = terrainWebGlState;
+  if (!state) {
+    return false;
   }
 
-  compiledHoleRender = {
-    scale: compiledHoleScale,
-    material,
-  };
+  const { gl, program, positionBuffer, textures, uniforms } = state;
+  gl.viewport(0, 0, canvas.width, canvas.height);
+  gl.useProgram(program);
 
-  return compiledHoleRender;
+  const positionLocation = gl.getAttribLocation(program, "a_position");
+  gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+  gl.enableVertexAttribArray(positionLocation);
+  gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
+
+  const textureEntries: Array<[WebGLTexture, WebGLUniformLocation | null]> = [
+    [textures.base, uniforms.base],
+    [textures.normal, uniforms.normal],
+    [textures.masks, uniforms.masks],
+    [textures.shadow, uniforms.shadow],
+  ];
+
+  textureEntries.forEach(([texture, uniform], index) => {
+    gl.activeTexture(gl.TEXTURE0 + index);
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.uniform1i(uniform, index);
+  });
+
+  gl.uniform2f(uniforms.viewport, width, height);
+  gl.uniform2f(uniforms.camera, camera.x, camera.y);
+  gl.uniform2f(uniforms.worldSize, worldWidth, worldHeight);
+  gl.uniform1f(uniforms.zoom, camera.zoom);
+  gl.uniform1f(uniforms.time, timestamp * 0.001);
+  gl.uniform2f(uniforms.wind, Math.cos(renderRules.windDirection), Math.sin(renderRules.windDirection));
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+  return true;
 }
 
 function speed(ball: BallState) {
@@ -1875,19 +2032,6 @@ function drawAtmosphere(ctx: CanvasRenderingContext2D, width: number, height: nu
   ctx.fillRect(0, 0, width, height);
 }
 
-function drawCompiledTerrain(
-  ctx: CanvasRenderingContext2D,
-  sx: (value: number) => number,
-  sy: (value: number) => number,
-  scale: number,
-  compiled: CompiledHoleRender,
-) {
-  ctx.save();
-  ctx.imageSmoothingEnabled = true;
-  ctx.drawImage(compiled.material, sx(0), sy(0), worldWidth * scale, worldHeight * scale);
-  ctx.restore();
-}
-
 function drawGrass(
   ctx: CanvasRenderingContext2D,
   sx: (value: number) => number,
@@ -1897,30 +2041,6 @@ function drawGrass(
   scale: number,
   timestamp: number,
 ) {
-  const compiled = getCompiledHoleRender();
-
-  if (compiled) {
-    drawTerrainBase(ctx, sx, sy, width, height, scale);
-    drawCompiledTerrain(ctx, sx, sy, scale, compiled);
-
-    if (renderRules.drawWater) {
-      drawWater(ctx, sx, sy, scale);
-    }
-    if (renderRules.drawGrassEdges) {
-      drawLiveGrassEdges(ctx, sx, sy, scale, timestamp);
-    }
-    if (renderRules.drawWindSheen) {
-      drawWindGrassSheen(ctx, sx, sy, scale, timestamp);
-    }
-    if (renderRules.drawScenery) {
-      drawWaterEdgeDetails(ctx, sx, sy, scale);
-      drawTrees(ctx, sx, sy, scale);
-    }
-    drawAtmosphere(ctx, width, height);
-    drawPin(ctx, sx, sy, scale);
-    return;
-  }
-
   drawTerrainBase(ctx, sx, sy, width, height, scale);
 
   if (renderRules.drawWater) {
@@ -2153,6 +2273,7 @@ function drawHud(ctx: CanvasRenderingContext2D, width: number, ball: BallState, 
 }
 
 export function GolfinPrototype() {
+  const terrainCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const frameRef = useRef<number | null>(null);
   const cameraFrameRef = useRef<number | null>(null);
@@ -2244,8 +2365,15 @@ export function GolfinPrototype() {
       currentHoleState === "sinking"
         ? clamp((timestamp - sinkStartedAtRef.current) / sinkDurationMs, 0, 1)
         : 0;
+    const terrainRendered = renderTerrainWebGl(terrainCanvasRef.current, camera, width, height, dpr, timestamp);
 
-    drawGrass(ctx, sx, sy, width, height, camera.zoom, timestamp);
+    ctx.clearRect(0, 0, width, height);
+    if (terrainRendered) {
+      drawAtmosphere(ctx, width, height);
+      drawPin(ctx, sx, sy, camera.zoom);
+    } else {
+      drawGrass(ctx, sx, sy, width, height, camera.zoom, timestamp);
+    }
     if (currentHoleState === "playing") {
       drawTrail(ctx, sx, sy, camera.zoom, trailRef.current);
       drawAimGhost(ctx, sx, sy, camera.zoom, ball, selectedClubRef.current);
@@ -2456,6 +2584,7 @@ export function GolfinPrototype() {
 
   return (
     <main className="physics-stage" aria-label="Golfin physics prototype">
+      <canvas className="terrain-canvas" ref={terrainCanvasRef} aria-hidden="true" />
       <canvas className="physics-canvas" ref={canvasRef} />
       {holeState === "celebrating" && (
         <div className="hole-celebration" aria-live="polite">
