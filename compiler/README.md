@@ -24,7 +24,7 @@ npm run compile:course
 That reads the current Goodwood OSM-derived hole package and exports a compiler package under:
 
 ```text
-public/courses/goodwood-park-1/package/
+public/courses/goodwood-downs-1/package/
 ```
 
 This is a transitional input adapter. The browser game should consume compiler outputs; the compiler should eventually consume raw OSM snapshots and elevation sources.

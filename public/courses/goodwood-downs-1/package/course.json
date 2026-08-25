@@ -1,6 +1,6 @@
 {
-  "courseId": "goodwood-the-park",
-  "name": "Goodwood The Park",
+  "courseId": "goodwood-downs",
+  "name": "Goodwood The Downs",
   "projection": "legacy-local-cartesian",
   "units": "metres",
   "origin": {
@@ -11,14 +11,15 @@
   "biome": "temperate_parkland",
   "holes": [
     {
-      "id": "goodwood-park-1",
+      "id": "goodwood-downs-1",
       "number": 1,
-      "par": 4,
-      "yards": 389
+      "par": 3,
+      "yards": 182
     }
   ],
   "sourceVersions": {
-    "legacyPrototypeHole": "786c2855f22de285",
+    "sourceHole": "448eb59cc197a402",
+    "osmExtract": "fd0eac8a7bd4472c",
     "compiler": "0.1.0"
   },
   "elevation": {
@@ -33,5 +34,5 @@
   "attributions": [
     "Map geometry derived from OpenStreetMap contributors where available."
   ],
-  "build": "df14b2d2c8380545"
+  "build": "9ec0b3f2c379666c"
 }

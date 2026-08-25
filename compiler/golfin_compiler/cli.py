@@ -12,9 +12,9 @@ def main() -> None:
     subcommands = parser.add_subparsers(dest="command", required=True)
 
     goodwood = subcommands.add_parser("compile-goodwood", help="Compile the current Goodwood prototype hole package")
-    goodwood.add_argument("--source", default="public/courses/goodwood-park-1/hole.json", type=Path)
-    goodwood.add_argument("--out", default="public/courses/goodwood-park-1/package", type=Path)
-    goodwood.add_argument("--dtm", default="compiler/fixtures/goodwood-park-1-dtm.asc", type=Path)
+    goodwood.add_argument("--source", default="public/courses/goodwood-downs-1/hole.json", type=Path)
+    goodwood.add_argument("--out", default="public/courses/goodwood-downs-1/package", type=Path)
+    goodwood.add_argument("--dtm", default="compiler/fixtures/goodwood-downs-1-dtm.asc", type=Path)
 
     args = parser.parse_args()
 

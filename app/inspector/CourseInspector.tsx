@@ -180,7 +180,7 @@ type ViewTransform = {
   bounds: Bounds;
 };
 
-const packageRoot = "/courses/goodwood-park-1/package";
+const packageRoot = "/courses/goodwood-downs-1/package";
 const holeRoot = `${packageRoot}/holes/01`;
 
 const inspectorModes: Array<{ id: InspectorMode; label: string }> = [

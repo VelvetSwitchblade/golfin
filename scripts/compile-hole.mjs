@@ -1,14 +1,24 @@
+import { createHash } from "node:crypto";
 import { deflateSync } from "node:zlib";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
-const outDir = join(root, "public", "courses", "goodwood-park-1");
+const courseSlug = "goodwood-downs-1";
+const outDir = join(root, "public", "courses", courseSlug);
+const osmFixturePath = join(root, "compiler", "fixtures", "goodwood-downs-osm.json");
+const downsOsmWays = {
+  course: 166937233,
+  hole: 846023205,
+  tee: [846023206],
+  green: [846023207],
+  bunker: [846023208, 846023209],
+  fairway: [846023210],
+};
 
 const worldWidth = 900;
 const worldHeight = 1250;
-const scorecardHoleYards = 389;
 const roughCollarWidth = 58;
 const bunkerScale = 1.5;
 const assetScale = 2.4;
@@ -16,28 +26,100 @@ const width = Math.ceil(worldWidth * assetScale);
 const height = Math.ceil(worldHeight * assetScale);
 const sun = normalize([-0.62, 0.78, 0.68]);
 
-const sourceHole = {
-  name: "Goodwood The Park - Hole 1",
-  ref: "1",
-  par: 4,
-  holeLine: [
-    [902.8, 318.2],
-    [347, 321.6],
-    [96, 347.2],
-  ],
-  pin: [96, 347.2],
-  surfaces: [
-    { id: 845710620, type: "tee", points: [[930, 329.8], [881.1, 329.5], [881, 305.1], [929.6, 305.1], [930, 329.8]] },
-    { id: 845710621, type: "tee", points: [[744.9, 284], [749.4, 290.1], [747.8, 299.9], [741, 302.6], [734.9, 299.1], [734, 290.6], [736.9, 283.8], [744.9, 284]] },
-    { id: 845710622, type: "fairway", points: [[631.8, 281.9], [655.5, 310.5], [646.6, 332.4], [614.6, 341.1], [574.2, 335], [520.1, 327.5], [416.4, 330.6], [313, 363], [239, 365.8], [144.6, 370.1], [97.4, 370.1], [70.2, 345.2], [82.2, 321.6], [106.9, 310.5], [126.9, 308.5], [164.7, 323.3], [221.4, 324.1], [301.8, 300.4], [362, 295.1], [425.7, 275.9], [465.8, 261.9], [520.3, 267.1], [549.3, 268.1], [566.5, 266.5], [631.8, 281.9]] },
-    { id: 845710623, type: "bunker", points: [[513.9, 247.3], [520.9, 247.3], [526.1, 249], [532, 254.6], [535.6, 256.8], [542.1, 257.1], [545, 260.9], [544.1, 264.2], [541.7, 266.4], [538.6, 267.4], [534.2, 267], [530.7, 265], [527.8, 261.9], [524.5, 260.8], [520, 261.6], [516.5, 262.2], [511.8, 260.5], [508.6, 257.4], [507.3, 253.4], [508.9, 249.6], [511.9, 247.6], [513.9, 247.3]] },
-    { id: 845710624, type: "bunker", points: [[115.2, 317.9], [117.8, 318.2], [120.6, 319.4], [124.2, 319], [127.3, 319.2], [129.5, 321.6], [128.7, 325.2], [126.2, 328.4], [122.6, 330], [118.6, 330.5], [114.5, 329.3], [110.9, 326.6], [109.7, 323.2], [111, 319.4], [113.9, 317.9], [115.2, 317.9]] },
-    { id: 845710625, type: "green", points: [[94.6, 324.1], [101.1, 327], [106.4, 333.1], [111.5, 337.1], [121.4, 342.2], [124.8, 347.4], [125.7, 354.6], [122.8, 359.1], [117.9, 362], [110.2, 363.6], [102.2, 364.1], [90.1, 365.4], [83, 360.5], [78.5, 354.6], [75, 346.9], [73.8, 340.8], [75.7, 334.2], [79, 329.1], [85.4, 325], [94.6, 324.1]] },
-    { id: 845710626, type: "rough", points: [[115.7, 334.4], [124.4, 337.2], [132.6, 332.7], [134.9, 322.8], [129.9, 314.2], [118, 311.6], [108.7, 313.9], [103.6, 318.4], [103.4, 324.9], [111.1, 331.4], [115.7, 334.4]] },
-  ],
-};
+const osmFixture = readFileSync(osmFixturePath, "utf8");
+const sourceHole = buildSourceHoleFromOsm(JSON.parse(osmFixture), hashText(osmFixture));
+const scorecardHoleYards = sourceHole.yards;
 
 const waterHazards = [];
+
+function buildSourceHoleFromOsm(osm, extractHash) {
+  const nodes = new Map(
+    osm.elements
+      .filter((element) => element.type === "node")
+      .map((node) => [node.id, { lat: node.lat, lon: node.lon }]),
+  );
+  const ways = new Map(
+    osm.elements
+      .filter((element) => element.type === "way")
+      .map((way) => [way.id, way]),
+  );
+  const courseWay = wayOrThrow(ways, downsOsmWays.course);
+  const holeWay = wayOrThrow(ways, downsOsmWays.hole);
+  const origin = nodeOrThrow(nodes, holeWay.nodes[0]);
+  const holeLine = wayPoints(holeWay, nodes, origin);
+  const surfaceGroups = [
+    ["tee", downsOsmWays.tee],
+    ["fairway", downsOsmWays.fairway],
+    ["green", downsOsmWays.green],
+    ["bunker", downsOsmWays.bunker],
+  ];
+
+  return {
+    id: courseSlug,
+    courseId: "goodwood-downs",
+    courseName: "Goodwood The Downs",
+    sourceKind: "osm",
+    source: {
+      provider: "openstreetmap",
+      extract: "compiler/fixtures/goodwood-downs-osm.json",
+      extractHash,
+      courseWay: downsOsmWays.course,
+      holeWay: downsOsmWays.hole,
+    },
+    name: `${courseWay.tags.name} - Hole ${holeWay.tags.ref}`,
+    ref: holeWay.tags.ref,
+    par: Number(holeWay.tags.par),
+    yards: Math.round(lineLength(holeLine) / 0.9144),
+    holeLine,
+    pin: holeLine[holeLine.length - 1],
+    surfaces: surfaceGroups.flatMap(([type, ids]) =>
+      ids.map((id) => ({
+        id,
+        type,
+        points: wayPoints(wayOrThrow(ways, id), nodes, origin),
+        source: "osm",
+      })),
+    ),
+  };
+}
+
+function hashText(value) {
+  return createHash("sha256").update(value).digest("hex").slice(0, 16);
+}
+
+function wayOrThrow(ways, id) {
+  const way = ways.get(id);
+  if (!way) {
+    throw new Error(`Missing OSM way ${id}`);
+  }
+  return way;
+}
+
+function nodeOrThrow(nodes, id) {
+  const node = nodes.get(id);
+  if (!node) {
+    throw new Error(`Missing OSM node ${id}`);
+  }
+  return node;
+}
+
+function wayPoints(way, nodes, origin) {
+  const nodePoints = way.nodes.map((nodeId) => {
+    const node = nodes.get(nodeId);
+    if (!node) {
+      throw new Error(`Missing OSM node ${nodeId} for way ${way.id}`);
+    }
+    return node;
+  });
+  const lat0 = (origin.lat * Math.PI) / 180;
+  const metresPerDegreeLat = 111_132;
+  const metresPerDegreeLon = Math.cos(lat0) * 111_320;
+
+  return nodePoints.map((node) => [
+    round((node.lon - origin.lon) * metresPerDegreeLon),
+    round((node.lat - origin.lat) * metresPerDegreeLat),
+  ]);
+}
 
 const materials = {
   heavy: { color: [33, 91, 44], grain: 1.42, stripe: 0, detail: 1.36 },
@@ -506,6 +588,11 @@ writePng(join(outDir, "masks.png"), assets.masks, width, height);
 writePng(join(outDir, "shadow.png"), assets.shadow, width, height);
 writePng(join(outDir, "objects.png"), assets.objects, width, height);
 writeFileSync(join(outDir, "hole.json"), `${JSON.stringify({
+  id: course.id,
+  courseId: course.courseId,
+  courseName: course.courseName,
+  sourceKind: course.sourceKind,
+  source: course.source,
   name: course.name,
   ref: course.ref,
   par: course.par,

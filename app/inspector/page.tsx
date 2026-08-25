@@ -3,7 +3,7 @@ import { CourseInspector } from "./CourseInspector";
 
 export const metadata: Metadata = {
   title: "Golfin Course Inspector",
-  description: "Compiler output inspector for the Goodwood The Park hole package.",
+  description: "Compiler output inspector for the Goodwood Downs hole package.",
 };
 
 export default function InspectorPage() {

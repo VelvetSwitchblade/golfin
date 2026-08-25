@@ -17,7 +17,7 @@ class CompilerPipelineTest(unittest.TestCase):
     def test_goodwood_legacy_compile_exports_package(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             result = compile_legacy_goodwood(
-                Path("public/courses/goodwood-park-1/hole.json"),
+                Path("public/courses/goodwood-downs-1/hole.json"),
                 Path(tmp),
             )
 
@@ -39,6 +39,9 @@ class CompilerPipelineTest(unittest.TestCase):
             self.assertFalse(validation["premiumReady"])
             self.assertGreater(validation["terrainMesh"]["triangles"], 0)
             gameplay = json.loads((Path(tmp) / "holes" / "01" / "gameplay.json").read_text())
+            self.assertEqual(gameplay["hole"]["id"], "goodwood-downs-1")
+            self.assertEqual(gameplay["hole"]["par"], 3)
+            self.assertEqual(gameplay["hole"]["yards"], 182)
             self.assertFalse(any(feature["id"].startswith("synthetic-water:") for feature in gameplay["features"]))
             self.assertIn("no-procedural-course-features", {check["name"] for check in validation["checks"]})
             self.assertIn("no-procedural-water", {check["name"] for check in validation["checks"]})
@@ -118,7 +121,7 @@ class CompilerPipelineTest(unittest.TestCase):
         self.assertIn("no-procedural-water", failed_checks)
 
     def test_surface_map_is_compact_and_semantic(self) -> None:
-        source = Path("public/courses/goodwood-park-1/hole.json")
+        source = Path("public/courses/goodwood-downs-1/hole.json")
         course = normalize_legacy_hole(__import__("json").loads(source.read_text()))
         surface_map = build_surface_map(course.holes[0], width=32, height=48)
         cells = base64.b64decode(surface_map["data"])

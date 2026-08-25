@@ -18,7 +18,7 @@ from .surfaces import SURFACE_IDS, SURFACE_PHYSICS
 
 ROUGH_COLLAR_METRES = 21.6
 SURFACE_PRIORITY: list[SurfaceId] = ["water", "bunker", "green", "tee", "fairway"]
-DEFAULT_DTM_PATH = Path("compiler/fixtures/goodwood-park-1-dtm.asc")
+DEFAULT_DTM_PATH = Path("compiler/fixtures/goodwood-downs-1-dtm.asc")
 GAMEPLAY_SIGNIFICANT_SURFACES: set[SurfaceId] = {"water", "bunker", "green", "tee", "fairway"}
 
 
@@ -53,6 +53,12 @@ def normalize_legacy_hole(source: dict[str, Any]) -> CourseModel:
     def metres(point: list[float]) -> tuple[float, float]:
         return (round(point[0] / game_units_per_metre, 3), round(point[1] / game_units_per_metre, 3))
 
+    feature_source: str = "osm" if source.get("sourceKind") == "osm" else "legacy-osm-derived"
+    provenance_note = (
+        "Imported from an OpenStreetMap extract pinned in the compiler fixtures."
+        if feature_source == "osm"
+        else "Imported from the existing Goodwood OSM-derived prototype geometry."
+    )
     features: list[Feature] = []
     for surface in source["surfaces"]:
         surface_type = normalize_surface(surface["type"])
@@ -62,16 +68,16 @@ def normalize_legacy_hole(source: dict[str, Any]) -> CourseModel:
                 surface=surface_type,
                 geometry=[metres(point) for point in surface["points"]],
                 provenance=Provenance(
-                    source="legacy-osm-derived",
+                    source=feature_source,  # type: ignore[arg-type]
                     source_id=surface["id"],
-                    confidence=0.78,
-                    note="Imported from the existing Goodwood OSM-derived prototype geometry.",
+                    confidence=0.92 if feature_source == "osm" else 0.78,
+                    note=provenance_note,
                 ),
             )
         )
 
     hole = HoleModel(
-        id="goodwood-park-1",
+        id=source.get("id", "goodwood-legacy-1"),
         number=int(source["ref"]),
         par=int(source["par"]),
         yards=int(source["yards"]),
@@ -82,15 +88,16 @@ def normalize_legacy_hole(source: dict[str, Any]) -> CourseModel:
     )
 
     return CourseModel(
-        course_id="goodwood-the-park",
-        name=source["name"].replace(" - Hole 1", ""),
+        course_id=source.get("courseId", "goodwood"),
+        name=source.get("courseName", source["name"].replace(" - Hole 1", "")),
         projection="legacy-local-cartesian",
         units="metres",
         origin={"lat": None, "lon": None, "elevation": None},
         biome="temperate_parkland",
         holes=[hole],
         source_versions={
-            "legacyPrototypeHole": source_path_fingerprint(source),
+            "sourceHole": source_path_fingerprint(source),
+            **({"osmExtract": source["source"]["extractHash"]} if source.get("source", {}).get("extractHash") else {}),
             "compiler": __version__,
         },
         attributions=[source.get("attribution", "Map geometry derived from OpenStreetMap contributors where available.")],

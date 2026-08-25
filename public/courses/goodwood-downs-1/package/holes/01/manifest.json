@@ -1,14 +1,14 @@
 {
   "schema": "golfin.hole-package.v0",
   "compiler": "0.1.0",
-  "build": "df14b2d2c8380545",
+  "build": "9ec0b3f2c379666c",
   "immutable": true,
   "sourcePolicy": "authoritative-geometry-procedural-rendering",
   "bounds": {
-    "minX": 157.478,
-    "minY": 44.774,
-    "maxX": 207.975,
-    "maxY": 423.469
+    "minX": 58.86,
+    "minY": 8.566,
+    "maxX": 96.261,
+    "maxY": 195.851
   },
   "assets": {
     "terrainMesh": "terrain.glb",

@@ -1,12 +1,12 @@
 {
   "approved": true,
   "premiumReady": false,
-  "mappingFidelity": 99,
+  "mappingFidelity": 98,
   "elevationFidelity": 18,
   "elevationStatus": "connected",
   "terrainMesh": {
-    "vertices": 4269,
-    "triangles": 7610,
+    "vertices": 4116,
+    "triangles": 7466,
     "baseCellsX": 96,
     "baseCellsY": 144,
     "adaptive": 1
@@ -91,49 +91,37 @@
       "weight": 4
     },
     {
-      "name": "osm:845710620-area",
+      "name": "osm:846023206-area",
       "status": "pass",
       "mandatory": true,
       "weight": 4
     },
     {
-      "name": "osm:845710621-area",
+      "name": "osm:846023210-area",
       "status": "pass",
       "mandatory": true,
       "weight": 4
     },
     {
-      "name": "osm:845710622-area",
+      "name": "osm:846023207-area",
       "status": "pass",
       "mandatory": true,
       "weight": 4
     },
     {
-      "name": "osm:845710623-area",
+      "name": "osm:846023207-contains-pin",
+      "status": "pass",
+      "mandatory": true,
+      "weight": 4
+    },
+    {
+      "name": "osm:846023208-area",
       "status": "pass",
       "mandatory": false,
       "weight": 1
     },
     {
-      "name": "osm:845710624-area",
-      "status": "pass",
-      "mandatory": false,
-      "weight": 1
-    },
-    {
-      "name": "osm:845710625-area",
-      "status": "pass",
-      "mandatory": true,
-      "weight": 4
-    },
-    {
-      "name": "osm:845710625-contains-pin",
-      "status": "pass",
-      "mandatory": true,
-      "weight": 4
-    },
-    {
-      "name": "osm:845710626-area",
+      "name": "osm:846023209-area",
       "status": "pass",
       "mandatory": false,
       "weight": 1
