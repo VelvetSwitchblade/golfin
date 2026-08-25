@@ -47,7 +47,7 @@ The browser should never need to understand GIS formats. It should load:
 5. Deterministic procedural generation: visual detail only.
 6. Artistic rules: material appearance, lighting, density, biome.
 
-Generated scenery can enhance mapped features, but must not create gameplay-significant bunkers, water, walls, buildings, or landmark trees that are not present in source data.
+Generated scenery can enhance mapped features, but must not create gameplay-significant bunkers, water, walls, buildings, or landmark trees that are not present in source data. If a hole has no mapped water, the compiled package must have no water.
 
 ## Runtime Contract
 

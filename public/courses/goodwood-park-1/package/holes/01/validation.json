@@ -1,7 +1,7 @@
 {
   "approved": true,
   "premiumReady": false,
-  "mappingFidelity": 98,
+  "mappingFidelity": 99,
   "elevationFidelity": 18,
   "elevationStatus": "connected",
   "terrainMesh": {
@@ -53,6 +53,18 @@
       "status": "fail",
       "mandatory": false,
       "weight": 1
+    },
+    {
+      "name": "no-procedural-course-features",
+      "status": "pass",
+      "mandatory": true,
+      "weight": 4
+    },
+    {
+      "name": "no-procedural-water",
+      "status": "pass",
+      "mandatory": true,
+      "weight": 4
     },
     {
       "name": "sensible-yardage",

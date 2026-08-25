@@ -19,6 +19,7 @@ from .surfaces import SURFACE_IDS, SURFACE_PHYSICS
 ROUGH_COLLAR_METRES = 21.6
 SURFACE_PRIORITY: list[SurfaceId] = ["water", "bunker", "green", "tee", "fairway"]
 DEFAULT_DTM_PATH = Path("compiler/fixtures/goodwood-park-1-dtm.asc")
+GAMEPLAY_SIGNIFICANT_SURFACES: set[SurfaceId] = {"water", "bunker", "green", "tee", "fairway"}
 
 
 def compile_legacy_goodwood(source_path: Path, output_dir: Path, dtm_path: Path | None = DEFAULT_DTM_PATH) -> dict[str, Any]:
@@ -112,6 +113,16 @@ def validate_course(course: CourseModel, dtm: DTMGrid | None = None, mesh: Terra
             feature.surface == "water" and feature.provenance.source != "procedural"
             for feature in hole.features
         )
+        procedural_gameplay_features = [
+            feature
+            for feature in hole.features
+            if feature.surface in GAMEPLAY_SIGNIFICANT_SURFACES and feature.provenance.source == "procedural"
+        ]
+        procedural_water = [
+            feature
+            for feature in hole.features
+            if feature.surface == "water" and feature.provenance.source == "procedural"
+        ]
         checks.extend(
             [
                 check("hole-centreline", len(hole.centreline) >= 2, True),
@@ -121,6 +132,8 @@ def validate_course(course: CourseModel, dtm: DTMGrid | None = None, mesh: Terra
                 check("hole-has-fairway", "fairway" in surfaces, True),
                 check("bunkers-known", "bunker" in surfaces, False),
                 check("physical-water-known", known_physical_water, False),
+                check("no-procedural-course-features", not procedural_gameplay_features, True),
+                check("no-procedural-water", not procedural_water, True),
                 check("sensible-yardage", abs((line_length(hole.centreline) / 0.9144) - hole.yards) < 18, True),
                 check("dtm-connected", dtm is not None, True),
                 check("terrain-mesh-generated", mesh is not None and mesh.stats["triangles"] > 0, True),
