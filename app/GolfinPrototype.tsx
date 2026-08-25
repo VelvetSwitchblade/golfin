@@ -41,15 +41,16 @@ type WaterEdgeDetail = {
 };
 
 type GrassTextureSpec = {
-  base: [number, number, number];
-  highlight: [number, number, number];
-  shade: [number, number, number];
-  blade: [number, number, number];
-  bladeDensity: number;
-  bladeLength: number;
+  albedoSrc: string;
+  heightSrc: string;
+  fallback: [number, number, number];
+  tint: [number, number, number];
+  tintStrength: number;
+  brightness: number;
+  contrast: number;
   bumpStrength: number;
-  seed: number;
   tileSize: number;
+  tileWorldSize: number;
 };
 
 type RenderRules = {
@@ -151,59 +152,64 @@ const materials: Record<Surface["name"], Surface> = {
 
 const grassTextureSpecs: Record<Exclude<Surface["name"], "bunker">, GrassTextureSpec> = {
   fairway: {
-    base: [66, 146, 72],
-    highlight: [126, 191, 98],
-    shade: [35, 91, 45],
-    blade: [149, 210, 117],
-    bladeDensity: 0.48,
-    bladeLength: 11,
-    bumpStrength: 0.95,
-    seed: 12.4,
-    tileSize: 160,
+    albedoSrc: "/textures/grass/Grass005_1K-JPG_Color.jpg",
+    heightSrc: "/textures/grass/Grass005_1K-JPG_Displacement.jpg",
+    fallback: [66, 146, 72],
+    tint: [92, 176, 72],
+    tintStrength: 0.46,
+    brightness: 1.08,
+    contrast: 1.1,
+    bumpStrength: 1.16,
+    tileSize: 192,
+    tileWorldSize: 150,
   },
   green: {
-    base: [94, 181, 91],
-    highlight: [163, 222, 126],
-    shade: [54, 126, 55],
-    blade: [188, 239, 147],
-    bladeDensity: 0.34,
-    bladeLength: 6,
-    bumpStrength: 0.48,
-    seed: 28.9,
-    tileSize: 128,
+    albedoSrc: "/textures/grass/Grass006_1K-JPG_Color.jpg",
+    heightSrc: "/textures/grass/Grass006_1K-JPG_Displacement.jpg",
+    fallback: [94, 181, 91],
+    tint: [126, 214, 99],
+    tintStrength: 0.58,
+    brightness: 1.18,
+    contrast: 0.82,
+    bumpStrength: 0.42,
+    tileSize: 192,
+    tileWorldSize: 120,
   },
   heavy: {
-    base: [31, 91, 50],
-    highlight: [79, 132, 61],
-    shade: [13, 53, 32],
-    blade: [96, 144, 76],
-    bladeDensity: 0.76,
-    bladeLength: 17,
-    bumpStrength: 1.32,
-    seed: 44.2,
-    tileSize: 192,
+    albedoSrc: "/textures/grass/Grass001_1K-JPG_Color.jpg",
+    heightSrc: "/textures/grass/Grass001_1K-JPG_Displacement.jpg",
+    fallback: [31, 91, 50],
+    tint: [40, 104, 49],
+    tintStrength: 0.34,
+    brightness: 0.84,
+    contrast: 1.28,
+    bumpStrength: 1.44,
+    tileSize: 224,
+    tileWorldSize: 190,
   },
   rough: {
-    base: [42, 116, 59],
-    highlight: [98, 160, 78],
-    shade: [24, 77, 42],
-    blade: [117, 177, 87],
-    bladeDensity: 0.66,
-    bladeLength: 15,
-    bumpStrength: 1.16,
-    seed: 63.7,
-    tileSize: 176,
+    albedoSrc: "/textures/grass/Grass008_1K-JPG_Color.jpg",
+    heightSrc: "/textures/grass/Grass008_1K-JPG_Displacement.jpg",
+    fallback: [42, 116, 59],
+    tint: [54, 132, 61],
+    tintStrength: 0.4,
+    brightness: 0.95,
+    contrast: 1.22,
+    bumpStrength: 1.32,
+    tileSize: 224,
+    tileWorldSize: 170,
   },
   tee: {
-    base: [87, 166, 86],
-    highlight: [150, 210, 120],
-    shade: [48, 112, 53],
-    blade: [172, 227, 137],
-    bladeDensity: 0.42,
-    bladeLength: 8,
+    albedoSrc: "/textures/grass/Grass005_1K-JPG_Color.jpg",
+    heightSrc: "/textures/grass/Grass005_1K-JPG_Displacement.jpg",
+    fallback: [87, 166, 86],
+    tint: [105, 190, 85],
+    tintStrength: 0.5,
+    brightness: 1.12,
+    contrast: 0.96,
     bumpStrength: 0.72,
-    seed: 78.5,
-    tileSize: 128,
+    tileSize: 192,
+    tileWorldSize: 125,
   },
 };
 
@@ -638,18 +644,54 @@ function colorString(color: [number, number, number], alpha = 1) {
   return `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${alpha})`;
 }
 
-function textureNoise(x: number, y: number, seed: number) {
-  const coarse =
-    seededNoise(Math.floor(x / 18) * 2.73 + Math.floor(y / 18) * 8.21 + seed) * 0.5;
-  const mid =
-    seededNoise(Math.floor(x / 7) * 5.17 + Math.floor(y / 7) * 3.61 + seed * 2.1) * 0.32;
-  const fine =
-    seededNoise(Math.floor(x / 2) * 9.43 + Math.floor(y / 2) * 6.47 + seed * 4.3) * 0.18;
+const grassPatternCache = new Map<string, CanvasPattern>();
+const textureImageCache = new Map<string, HTMLImageElement>();
 
-  return coarse + mid + fine;
+function textureImage(src: string) {
+  const cached = textureImageCache.get(src);
+  if (cached) {
+    return cached;
+  }
+
+  const image = new Image();
+  image.decoding = "async";
+  image.src = src;
+  textureImageCache.set(src, image);
+  return image;
 }
 
-const grassPatternCache = new Map<string, CanvasPattern>();
+function imageReady(image: HTMLImageElement) {
+  return image.complete && image.naturalWidth > 0;
+}
+
+function createFallbackGrassPattern(
+  ctx: CanvasRenderingContext2D,
+  spec: GrassTextureSpec,
+  type: Exclude<Surface["name"], "bunker">,
+) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 96;
+  canvas.height = 96;
+
+  const textureCtx = canvas.getContext("2d");
+  if (!textureCtx) {
+    return null;
+  }
+
+  textureCtx.fillStyle = colorString(spec.fallback);
+  textureCtx.fillRect(0, 0, canvas.width, canvas.height);
+  textureCtx.strokeStyle = colorString(mixColor(spec.fallback, spec.tint, 0.45), 0.14);
+  textureCtx.lineWidth = 1;
+
+  for (let i = 0; i < 96; i += type === "green" ? 14 : 9) {
+    textureCtx.beginPath();
+    textureCtx.moveTo((i * 17) % canvas.width, 0);
+    textureCtx.lineTo(((i * 17) % canvas.width) - 38, canvas.height);
+    textureCtx.stroke();
+  }
+
+  return ctx.createPattern(canvas, "repeat");
+}
 
 function createGrassPattern(ctx: CanvasRenderingContext2D, type: Exclude<Surface["name"], "bunker">) {
   const cached = grassPatternCache.get(type);
@@ -658,6 +700,13 @@ function createGrassPattern(ctx: CanvasRenderingContext2D, type: Exclude<Surface
   }
 
   const spec = grassTextureSpecs[type];
+  const albedo = textureImage(spec.albedoSrc);
+  const heightMap = textureImage(spec.heightSrc);
+
+  if (!imageReady(albedo) || !imageReady(heightMap)) {
+    return createFallbackGrassPattern(ctx, spec, type);
+  }
+
   const canvas = document.createElement("canvas");
   canvas.width = spec.tileSize;
   canvas.height = spec.tileSize;
@@ -667,76 +716,69 @@ function createGrassPattern(ctx: CanvasRenderingContext2D, type: Exclude<Surface
     return null;
   }
 
-  const image = textureCtx.createImageData(canvas.width, canvas.height);
+  const albedoCanvas = document.createElement("canvas");
+  const heightCanvas = document.createElement("canvas");
+  albedoCanvas.width = canvas.width;
+  albedoCanvas.height = canvas.height;
+  heightCanvas.width = canvas.width;
+  heightCanvas.height = canvas.height;
+
+  const albedoCtx = albedoCanvas.getContext("2d");
+  const heightCtx = heightCanvas.getContext("2d");
+  if (!albedoCtx || !heightCtx) {
+    return createFallbackGrassPattern(ctx, spec, type);
+  }
+
+  albedoCtx.drawImage(albedo, 0, 0, canvas.width, canvas.height);
+  heightCtx.drawImage(heightMap, 0, 0, canvas.width, canvas.height);
+
+  const albedoData = albedoCtx.getImageData(0, 0, canvas.width, canvas.height);
+  const heightData = heightCtx.getImageData(0, 0, canvas.width, canvas.height);
+  const shaded = textureCtx.createImageData(canvas.width, canvas.height);
   const height = new Float32Array(canvas.width * canvas.height);
 
   for (let y = 0; y < canvas.height; y += 1) {
     for (let x = 0; x < canvas.width; x += 1) {
       const index = y * canvas.width + x;
-      const grain =
-        textureNoise(x, y, spec.seed) * 0.58 +
-        textureNoise(x + y * 0.22, y - x * 0.06, spec.seed + 18.2) * 0.28 +
-        Math.sin((x * 0.18 + y * 0.86 + spec.seed) * 0.72) * 0.08;
-      height[index] = clamp(grain, 0, 1);
+      const pixelIndex = index * 4;
+      const displacement =
+        (heightData.data[pixelIndex] * 0.2126 +
+          heightData.data[pixelIndex + 1] * 0.7152 +
+          heightData.data[pixelIndex + 2] * 0.0722) /
+        255;
+      height[index] = displacement;
     }
   }
 
   for (let y = 0; y < canvas.height; y += 1) {
     for (let x = 0; x < canvas.width; x += 1) {
       const index = y * canvas.width + x;
+      const pixelIndex = index * 4;
       const left = height[y * canvas.width + ((x - 1 + canvas.width) % canvas.width)];
       const right = height[y * canvas.width + ((x + 1) % canvas.width)];
       const up = height[((y - 1 + canvas.height) % canvas.height) * canvas.width + x];
       const down = height[((y + 1) % canvas.height) * canvas.width + x];
       const dx = (right - left) * spec.bumpStrength;
       const dy = (down - up) * spec.bumpStrength;
-      const light = clamp(0.72 - dx * 0.42 - dy * 0.58 + height[index] * 0.34, 0, 1);
-      const color = light > 0.62
-        ? mixColor(spec.base, spec.highlight, (light - 0.62) / 0.38)
-        : mixColor(spec.shade, spec.base, light / 0.62);
-      const pixelIndex = index * 4;
+      const bumpLight = clamp(0.96 - dx * 0.86 - dy * 1.04 + (height[index] - 0.5) * 0.1, 0.58, 1.34);
+      const lightAdjusted = [
+        albedoData.data[pixelIndex],
+        albedoData.data[pixelIndex + 1],
+        albedoData.data[pixelIndex + 2],
+      ].map((channel, channelIndex) => {
+        const contrasted = (channel - 128) * spec.contrast + 128;
+        const brightened = clamp(contrasted * spec.brightness * bumpLight, 0, 255);
+        return mixChannel(brightened, spec.tint[channelIndex], spec.tintStrength);
+      });
 
-      image.data[pixelIndex] = color[0];
-      image.data[pixelIndex + 1] = color[1];
-      image.data[pixelIndex + 2] = color[2];
-      image.data[pixelIndex + 3] = 255;
+      shaded.data[pixelIndex] = lightAdjusted[0];
+      shaded.data[pixelIndex + 1] = lightAdjusted[1];
+      shaded.data[pixelIndex + 2] = lightAdjusted[2];
+      shaded.data[pixelIndex + 3] = 255;
     }
   }
 
-  textureCtx.putImageData(image, 0, 0);
-  textureCtx.globalCompositeOperation = "screen";
-  textureCtx.strokeStyle = colorString(spec.blade, 0.18);
-  textureCtx.lineWidth = 1;
-
-  const bladeCount = Math.floor(canvas.width * canvas.height * spec.bladeDensity * 0.04);
-  for (let i = 0; i < bladeCount; i += 1) {
-    const seed = spec.seed * 40 + i * 3.73;
-    const x = seededNoise(seed) * canvas.width;
-    const y = seededNoise(seed + 1.7) * canvas.height;
-    const length = (0.35 + seededNoise(seed + 2.8) * 0.9) * spec.bladeLength;
-    const lean = -0.55 + (seededNoise(seed + 4.2) - 0.5) * 0.44;
-
-    textureCtx.beginPath();
-    textureCtx.moveTo(x, y);
-    textureCtx.lineTo(x + Math.cos(lean) * length * 0.34, y + Math.sin(lean) * length);
-    textureCtx.stroke();
-  }
-
-  textureCtx.globalCompositeOperation = "multiply";
-  textureCtx.strokeStyle = "rgba(7, 28, 13, 0.12)";
-  const shadowBladeCount = Math.floor(bladeCount * 0.58);
-  for (let i = 0; i < shadowBladeCount; i += 1) {
-    const seed = spec.seed * 70 + i * 5.19;
-    const x = seededNoise(seed) * canvas.width;
-    const y = seededNoise(seed + 1.7) * canvas.height;
-    const length = (0.25 + seededNoise(seed + 2.8) * 0.76) * spec.bladeLength;
-    const lean = -0.4 + (seededNoise(seed + 4.2) - 0.5) * 0.52;
-
-    textureCtx.beginPath();
-    textureCtx.moveTo(x, y);
-    textureCtx.lineTo(x + Math.cos(lean) * length * 0.3, y + Math.sin(lean) * length);
-    textureCtx.stroke();
-  }
+  textureCtx.putImageData(shaded, 0, 0);
 
   const pattern = ctx.createPattern(canvas, "repeat");
   if (pattern) {
@@ -751,6 +793,7 @@ function setPatternWorldTransform(
   sx: (value: number) => number,
   sy: (value: number) => number,
   scale: number,
+  tileScale: number,
   offsetX = 0,
   offsetY = 0,
 ) {
@@ -760,10 +803,10 @@ function setPatternWorldTransform(
 
   pattern.setTransform(
     new DOMMatrix([
-      scale,
+      scale * tileScale,
       0,
       0,
-      scale,
+      scale * tileScale,
       sx(0) + offsetX * scale,
       sy(0) + offsetY * scale,
     ]),
@@ -784,7 +827,8 @@ function worldGrassPattern(
     return null;
   }
 
-  setPatternWorldTransform(pattern, sx, sy, scale, offsetX, offsetY);
+  const spec = grassTextureSpecs[type];
+  setPatternWorldTransform(pattern, sx, sy, scale, spec.tileWorldSize / spec.tileSize, offsetX, offsetY);
   return pattern;
 }
 
