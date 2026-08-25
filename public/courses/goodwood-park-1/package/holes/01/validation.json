@@ -5,8 +5,8 @@
   "elevationFidelity": 18,
   "elevationStatus": "connected",
   "terrainMesh": {
-    "vertices": 4005,
-    "triangles": 7220,
+    "vertices": 4269,
+    "triangles": 7610,
     "baseCellsX": 96,
     "baseCellsY": 144,
     "adaptive": 1
@@ -122,18 +122,6 @@
     },
     {
       "name": "osm:845710626-area",
-      "status": "pass",
-      "mandatory": false,
-      "weight": 1
-    },
-    {
-      "name": "synthetic-water:1-area",
-      "status": "pass",
-      "mandatory": false,
-      "weight": 1
-    },
-    {
-      "name": "synthetic-water:2-area",
       "status": "pass",
       "mandatory": false,
       "weight": 1

@@ -18,7 +18,7 @@
     }
   ],
   "sourceVersions": {
-    "legacyPrototypeHole": "ecf3fa7c1b3ebe92",
+    "legacyPrototypeHole": "786c2855f22de285",
     "compiler": "0.1.0"
   },
   "elevation": {
@@ -33,5 +33,5 @@
   "attributions": [
     "Map geometry derived from OpenStreetMap contributors where available."
   ],
-  "build": "26068dc170c3948a"
+  "build": "df14b2d2c8380545"
 }

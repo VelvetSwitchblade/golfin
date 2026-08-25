@@ -1,13 +1,13 @@
 {
   "schema": "golfin.hole-package.v0",
   "compiler": "0.1.0",
-  "build": "26068dc170c3948a",
+  "build": "df14b2d2c8380545",
   "immutable": true,
   "sourcePolicy": "authoritative-geometry-procedural-rendering",
   "bounds": {
-    "minX": 65.086,
-    "minY": 8.229,
-    "maxX": 269.32,
+    "minX": 157.478,
+    "minY": 44.774,
+    "maxX": 207.975,
     "maxY": 423.469
   },
   "assets": {

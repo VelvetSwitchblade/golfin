@@ -591,48 +591,7 @@ function orientCourse(source: CourseData): CourseData {
 const course = orientCourse(goodwoodParkHole1);
 const teePoint = course.holeLine[0];
 const worldUnitsPerYard = lineLength(course.holeLine) / scorecardHoleYards;
-const waterHazards: WaterHazard[] = [
-  {
-    id: 1,
-    points: [
-      [520, 34],
-      [584, 22],
-      [650, 42],
-      [700, 88],
-      [720, 148],
-      [704, 204],
-      [660, 246],
-      [604, 258],
-      [560, 236],
-      [546, 190],
-      [536, 154],
-      [506, 120],
-      [492, 82],
-      [500, 50],
-      [520, 34],
-    ],
-  },
-  {
-    id: 2,
-    points: [
-      [202, 418],
-      [262, 404],
-      [304, 448],
-      [306, 526],
-      [330, 600],
-      [312, 686],
-      [318, 764],
-      [274, 826],
-      [216, 812],
-      [196, 740],
-      [196, 660],
-      [174, 594],
-      [176, 508],
-      [184, 446],
-      [202, 418],
-    ],
-  },
-];
+const waterHazards: WaterHazard[] = [];
 
 const startBall: BallState = {
   x: teePoint[0],

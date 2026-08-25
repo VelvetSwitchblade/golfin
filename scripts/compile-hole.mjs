@@ -37,10 +37,7 @@ const sourceHole = {
   ],
 };
 
-const waterHazards = [
-  { id: 1, points: [[520, 34], [584, 22], [650, 42], [700, 88], [720, 148], [704, 204], [660, 246], [604, 258], [560, 236], [546, 190], [536, 154], [506, 120], [492, 82], [500, 50], [520, 34]] },
-  { id: 2, points: [[202, 418], [262, 404], [304, 448], [306, 526], [330, 600], [312, 686], [318, 764], [274, 826], [216, 812], [196, 740], [196, 660], [174, 594], [176, 508], [184, 446], [202, 418]] },
-];
+const waterHazards = [];
 
 const materials = {
   heavy: { color: [33, 91, 44], grain: 1.42, stripe: 0, detail: 1.36 },
@@ -241,7 +238,9 @@ function masksAt(x, y) {
   const greenSd = minSignedDistance(x, y, "green");
   const teeSd = minSignedDistance(x, y, "tee");
   const bunkerSd = minSignedDistance(x, y, "bunker");
-  const waterSd = Math.min(...waterHazards.map((hazard) => signedDistanceToSurface(x, y, hazard)));
+  const waterSd = waterHazards.length
+    ? Math.min(...waterHazards.map((hazard) => signedDistanceToSurface(x, y, hazard)))
+    : Infinity;
   const roughDistance = distanceToPlaySurfaces(x, y);
 
   return {
@@ -518,7 +517,6 @@ writeFileSync(join(outDir, "hole.json"), `${JSON.stringify({
   tee: course.holeLine[0],
   pin: course.pin,
   surfaces: course.surfaces,
-  waterHazards,
   objects: createObjects(),
   attribution: "Map geometry derived from OpenStreetMap contributors where available.",
 }, null, 2)}\n`);

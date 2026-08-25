@@ -35,6 +35,8 @@ class CompilerPipelineTest(unittest.TestCase):
             self.assertEqual(validation["elevationStatus"], "connected")
             self.assertFalse(validation["premiumReady"])
             self.assertGreater(validation["terrainMesh"]["triangles"], 0)
+            gameplay = json.loads((Path(tmp) / "holes" / "01" / "gameplay.json").read_text())
+            self.assertFalse(any(feature["id"].startswith("synthetic-water:") for feature in gameplay["features"]))
 
     def test_surface_map_is_compact_and_semantic(self) -> None:
         source = Path("public/courses/goodwood-park-1/hole.json")

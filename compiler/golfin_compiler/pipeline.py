@@ -69,21 +69,6 @@ def normalize_legacy_hole(source: dict[str, Any]) -> CourseModel:
             )
         )
 
-    for water in source.get("waterHazards", []):
-        features.append(
-            Feature(
-                id=f"synthetic-water:{water['id']}",
-                surface="water",
-                geometry=[metres(point) for point in water["points"]],
-                provenance=Provenance(
-                    source="procedural",
-                    source_id=water["id"],
-                    confidence=0.35,
-                    note="Temporary visual water from prototype rules; must be replaced by physical OSM/natural water.",
-                ),
-            )
-        )
-
     hole = HoleModel(
         id="goodwood-park-1",
         number=int(source["ref"]),

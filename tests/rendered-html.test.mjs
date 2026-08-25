@@ -42,6 +42,7 @@ test("compiled Goodwood hole assets are present", async () => {
   assert.equal(holeJson.yards, 389);
   assert.deepEqual(holeJson.world, { width: 900, height: 1250 });
   assert.ok(holeJson.worldUnitsPerYard > 0);
+  assert.equal(holeJson.waterHazards, undefined);
 
   await Promise.all([
     access("public/courses/goodwood-park-1/terrain-base.png"),
@@ -67,8 +68,17 @@ test("compiled Goodwood hole assets are present", async () => {
     await readFile("public/courses/goodwood-park-1/package/holes/01/terrain-debug.json", "utf8"),
   );
   assert.equal(terrainDebug.schema, "golfin.terrain-debug.v0");
-  assert.equal(terrainDebug.stats.triangles, 7220);
   assert.ok(terrainDebug.vertices.length > 0);
+
+  const validation = JSON.parse(
+    await readFile("public/courses/goodwood-park-1/package/holes/01/validation.json", "utf8"),
+  );
+  assert.equal(terrainDebug.stats.triangles, validation.terrainMesh.triangles);
+
+  const gameplay = JSON.parse(
+    await readFile("public/courses/goodwood-park-1/package/holes/01/gameplay.json", "utf8"),
+  );
+  assert.equal(gameplay.features.some((feature) => feature.id.startsWith("synthetic-water:")), false);
 });
 
 test("server-renders the course inspector shell", async () => {
