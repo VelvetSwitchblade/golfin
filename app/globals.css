@@ -140,7 +140,7 @@ button {
 }
 
 .hole-celebration strong {
-  animation: hole-pop 1.45s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: hole-pop 2.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   color: #f8fff2;
   filter: drop-shadow(0 18px 0 rgba(12, 30, 18, 0.32)) drop-shadow(0 0 28px rgba(248, 255, 242, 0.5));
   font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
@@ -154,35 +154,23 @@ button {
 }
 
 .hole-sparks {
-  inset: 0;
+  height: min(92vmin, 760px);
+  left: 50%;
+  overflow: visible;
   position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(92vmin, 760px);
   z-index: 1;
 }
 
-.hole-spark {
-  height: var(--spark-arc);
-  left: 50%;
-  position: absolute;
-  top: 50%;
-  transform: translate(-50%, -50%) rotate(var(--spark-angle));
-  transform-origin: left center;
-  width: var(--spark-length);
-}
-
-.hole-spark::before {
-  animation: spark-curve 1.18s ease-out forwards;
-  animation-delay: var(--spark-delay);
-  border-color: var(--spark-color);
-  border-radius: 50%;
-  border-style: solid;
-  border-width: 2px 0 0;
-  content: "";
-  display: block;
-  height: 100%;
+.hole-spark-path {
+  animation: spark-draw 2.2s cubic-bezier(0.16, 0.88, 0.22, 1) forwards;
+  fill: none;
   opacity: 0;
-  transform: rotate(var(--spark-bend)) scaleX(0);
-  transform-origin: left center;
-  width: 100%;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  stroke-linecap: round;
 }
 
 .hole-complete {
@@ -259,36 +247,46 @@ button {
     transform: rotate(-1deg) scale(0.94);
   }
 
-  56% {
+  52% {
+    opacity: 1;
+    transform: rotate(0deg) scale(1);
+  }
+
+  78% {
     opacity: 1;
     transform: rotate(0deg) scale(1);
   }
 
   100% {
     opacity: 0;
-    transform: rotate(0deg) scale(1.08);
+    transform: rotate(0deg) scale(1.06);
   }
 }
 
-@keyframes spark-curve {
+@keyframes spark-draw {
   0% {
     opacity: 0;
-    transform: rotate(var(--spark-bend)) scaleX(0) translateX(0);
+    stroke-dashoffset: 1;
   }
 
-  18% {
+  12% {
     opacity: 0.92;
-    transform: rotate(var(--spark-bend)) scaleX(0.62) translateX(5px);
+    stroke-dashoffset: 1;
   }
 
-  54% {
-    opacity: 0.74;
-    transform: rotate(var(--spark-mid-bend)) scaleX(1) translateX(18px);
+  46% {
+    opacity: 1;
+    stroke-dashoffset: 0;
+  }
+
+  72% {
+    opacity: 0.82;
+    stroke-dashoffset: -0.12;
   }
 
   100% {
     opacity: 0;
-    transform: rotate(var(--spark-end-bend)) scaleX(1.08) translateX(34px);
+    stroke-dashoffset: -0.22;
   }
 }
 

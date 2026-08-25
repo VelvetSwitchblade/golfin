@@ -1,6 +1,5 @@
 "use client";
 
-import type { CSSProperties } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 type BallState = {
@@ -288,7 +287,7 @@ const bunkerScale = 1.5;
 const cupRadius = 9;
 const cupCaptureSpeed = 36;
 const sinkDurationMs = 950;
-const celebrationDurationMs = 1450;
+const celebrationDurationMs = 2600;
 const outOfBoundsDurationMs = 1450;
 const scorecardHoleYards = 389;
 const fixedSwingMph: SwingSpeed = 100;
@@ -361,22 +360,32 @@ const clubDefinitions: ClubDefinition[] = [
 ];
 const defaultClub = clubDefinitions[0];
 const holeSparks = [
-  { angle: -8, color: "#f8fff2", delay: 0, length: 150, arc: 44, bend: -8 },
-  { angle: 14, color: "#f8d766", delay: 35, length: 132, arc: 38, bend: 10 },
-  { angle: 36, color: "#ff8f70", delay: 70, length: 144, arc: 46, bend: -12 },
-  { angle: 58, color: "#7ee28d", delay: 10, length: 124, arc: 36, bend: 9 },
-  { angle: 82, color: "#f8fff2", delay: 95, length: 136, arc: 42, bend: -7 },
-  { angle: 112, color: "#7fd6ff", delay: 45, length: 128, arc: 40, bend: 12 },
-  { angle: 138, color: "#f8d766", delay: 80, length: 148, arc: 48, bend: -11 },
-  { angle: 164, color: "#ff8f70", delay: 20, length: 118, arc: 34, bend: 8 },
-  { angle: 190, color: "#f8fff2", delay: 110, length: 140, arc: 42, bend: -9 },
-  { angle: 216, color: "#7ee28d", delay: 55, length: 126, arc: 36, bend: 11 },
-  { angle: 242, color: "#7fd6ff", delay: 90, length: 154, arc: 50, bend: -13 },
-  { angle: 268, color: "#f8d766", delay: 25, length: 122, arc: 38, bend: 10 },
-  { angle: 294, color: "#ff8f70", delay: 65, length: 146, arc: 44, bend: -8 },
-  { angle: 320, color: "#f8fff2", delay: 105, length: 130, arc: 40, bend: 9 },
-  { angle: 344, color: "#7ee28d", delay: 50, length: 138, arc: 46, bend: -10 },
-  { angle: 368, color: "#7fd6ff", delay: 85, length: 120, arc: 34, bend: 12 },
+  { angle: -96, color: "#f8fff2", delay: 20, length: 230, curve: -84, width: 2.2 },
+  { angle: -79, color: "#f8d766", delay: 90, length: 288, curve: 72, width: 1.65 },
+  { angle: -61, color: "#ff8f70", delay: 145, length: 202, curve: -58, width: 1.8 },
+  { angle: -42, color: "#7fd6ff", delay: 35, length: 316, curve: 92, width: 1.55 },
+  { angle: -25, color: "#7ee28d", delay: 118, length: 248, curve: -76, width: 1.9 },
+  { angle: -8, color: "#f8fff2", delay: 172, length: 342, curve: 54, width: 1.45 },
+  { angle: 11, color: "#f8d766", delay: 64, length: 214, curve: -68, width: 1.75 },
+  { angle: 29, color: "#ff8f70", delay: 214, length: 306, curve: 88, width: 1.5 },
+  { angle: 48, color: "#7ee28d", delay: 130, length: 262, curve: -96, width: 1.85 },
+  { angle: 67, color: "#7fd6ff", delay: 46, length: 348, curve: 70, width: 1.4 },
+  { angle: 86, color: "#f8fff2", delay: 188, length: 238, curve: -54, width: 2 },
+  { angle: 104, color: "#f8d766", delay: 78, length: 292, curve: 86, width: 1.55 },
+  { angle: 123, color: "#ff8f70", delay: 224, length: 220, curve: -72, width: 1.7 },
+  { angle: 142, color: "#7fd6ff", delay: 150, length: 328, curve: 62, width: 1.45 },
+  { angle: 160, color: "#7ee28d", delay: 28, length: 256, curve: -90, width: 1.9 },
+  { angle: 178, color: "#f8fff2", delay: 108, length: 300, curve: 76, width: 1.6 },
+  { angle: 198, color: "#f8d766", delay: 196, length: 236, curve: -64, width: 1.85 },
+  { angle: 216, color: "#ff8f70", delay: 58, length: 338, curve: 98, width: 1.4 },
+  { angle: 235, color: "#7fd6ff", delay: 138, length: 268, curve: -78, width: 1.7 },
+  { angle: 253, color: "#7ee28d", delay: 238, length: 312, curve: 56, width: 1.55 },
+  { angle: 272, color: "#f8fff2", delay: 82, length: 226, curve: -86, width: 2.1 },
+  { angle: 291, color: "#f8d766", delay: 166, length: 354, curve: 74, width: 1.45 },
+  { angle: 310, color: "#ff8f70", delay: 42, length: 244, curve: -60, width: 1.8 },
+  { angle: 329, color: "#7fd6ff", delay: 252, length: 318, curve: 94, width: 1.5 },
+  { angle: 347, color: "#7ee28d", delay: 126, length: 282, curve: -82, width: 1.65 },
+  { angle: 365, color: "#f8fff2", delay: 206, length: 334, curve: 58, width: 1.45 },
 ];
 
 function orientCourse(source: CourseData): CourseData {
@@ -1448,24 +1457,62 @@ export function GolfinPrototype() {
       <canvas className="physics-canvas" ref={canvasRef} />
       {holeState === "celebrating" && (
         <div className="hole-celebration" aria-live="polite">
-          <span className="hole-sparks" aria-hidden="true">
-            {holeSparks.map((spark, index) => (
-              <span
-                className="hole-spark"
-                key={`${spark.angle}-${index}`}
-                style={{
-                  "--spark-angle": `${spark.angle}deg`,
-                  "--spark-arc": `${spark.arc}px`,
-                  "--spark-bend": `${spark.bend}deg`,
-                  "--spark-color": spark.color,
-                  "--spark-delay": `${spark.delay}ms`,
-                  "--spark-end-bend": `${spark.bend * -0.9}deg`,
-                  "--spark-length": `${spark.length}px`,
-                  "--spark-mid-bend": `${spark.bend * -0.55}deg`,
-                } as CSSProperties}
-              />
-            ))}
-          </span>
+          <svg
+            aria-hidden="true"
+            className="hole-sparks"
+            preserveAspectRatio="xMidYMid meet"
+            viewBox="-420 -420 840 840"
+          >
+            <defs>
+              {holeSparks.map((spark, index) => {
+                const radians = (spark.angle * Math.PI) / 180;
+                const endX = Math.cos(radians) * spark.length;
+                const endY = Math.sin(radians) * spark.length;
+
+                return (
+                  <linearGradient
+                    gradientUnits="userSpaceOnUse"
+                    id={`hole-spark-gradient-${index}`}
+                    key={`gradient-${spark.angle}-${index}`}
+                    x1="0"
+                    x2={endX}
+                    y1="0"
+                    y2={endY}
+                  >
+                    <stop offset="0%" stopColor={spark.color} stopOpacity="0" />
+                    <stop offset="42%" stopColor={spark.color} stopOpacity="0.12" />
+                    <stop offset="78%" stopColor={spark.color} stopOpacity="0.54" />
+                    <stop offset="100%" stopColor={spark.color} stopOpacity="1" />
+                  </linearGradient>
+                );
+              })}
+            </defs>
+            {holeSparks.map((spark, index) => {
+              const radians = (spark.angle * Math.PI) / 180;
+              const alongX = Math.cos(radians);
+              const alongY = Math.sin(radians);
+              const normalX = -alongY;
+              const normalY = alongX;
+              const endX = alongX * spark.length;
+              const endY = alongY * spark.length;
+              const c1X = alongX * spark.length * 0.24 + normalX * spark.curve * 0.18;
+              const c1Y = alongY * spark.length * 0.24 + normalY * spark.curve * 0.18;
+              const c2X = alongX * spark.length * 0.68 + normalX * spark.curve;
+              const c2Y = alongY * spark.length * 0.68 + normalY * spark.curve;
+
+              return (
+                <path
+                  className="hole-spark-path"
+                  d={`M 0 0 C ${c1X.toFixed(1)} ${c1Y.toFixed(1)}, ${c2X.toFixed(1)} ${c2Y.toFixed(1)}, ${endX.toFixed(1)} ${endY.toFixed(1)}`}
+                  key={`spark-${spark.angle}-${index}`}
+                  pathLength="1"
+                  stroke={`url(#hole-spark-gradient-${index})`}
+                  strokeWidth={spark.width}
+                  style={{ animationDelay: `${spark.delay}ms` }}
+                />
+              );
+            })}
+          </svg>
           <strong>HOLE!</strong>
         </div>
       )}
