@@ -31,6 +31,15 @@ type WaterHazard = {
   points: Array<[number, number]>;
 };
 
+type WaterEdgeDetail = {
+  id: number;
+  kind: "rock" | "shrub" | "flower";
+  x: number;
+  y: number;
+  r: number;
+  seed: number;
+};
+
 type CourseData = {
   name: string;
   ref: string;
@@ -296,6 +305,7 @@ const celebrationDurationMs = 2600;
 const outOfBoundsDurationMs = 1450;
 const scorecardHoleYards = 389;
 const fixedSwingMph: SwingSpeed = 100;
+const sunVector = { x: -0.62, y: 0.78 };
 const clubDefinitions: ClubDefinition[] = [
   {
     id: "driver",
@@ -672,7 +682,7 @@ function createTreeLine() {
         continue;
       }
 
-      const count = Math.max(1, Math.floor(edgeLength / 54));
+      const count = Math.max(1, Math.floor(edgeLength / 38));
 
       for (let sampleIndex = 0; sampleIndex < count; sampleIndex += 1) {
         const t = (sampleIndex + 0.5) / count;
@@ -682,9 +692,9 @@ function createTreeLine() {
         const awayY = baseY - centroid.y;
         const awayLength = Math.hypot(awayX, awayY) || 1;
         const seed = surface.id * 0.013 + edgeIndex * 8.7 + sampleIndex * 2.31;
-        const stagger = (seededNoise(seed) - 0.5) * 30;
+        const stagger = (seededNoise(seed) - 0.5) * 42;
         const setback = roughCollarWidth + treeSetback + stagger;
-        const lateral = (seededNoise(seed + 4.17) - 0.5) * 28;
+        const lateral = (seededNoise(seed + 4.17) - 0.5) * 36;
         const tangentX = dx / (edgeLength || 1);
         const tangentY = dy / (edgeLength || 1);
         const x = baseX + (awayX / awayLength) * setback + tangentX * lateral;
@@ -698,14 +708,18 @@ function createTreeLine() {
           continue;
         }
 
-        if (trees.some((tree) => Math.hypot(tree.x - x, tree.y - y) < 44)) {
+        if (waterHazards.some((hazard) => pointInPolygon(x, y, hazard.points))) {
+          continue;
+        }
+
+        if (trees.some((tree) => Math.hypot(tree.x - x, tree.y - y) < 36)) {
           continue;
         }
 
         trees.push({
           x: Number(x.toFixed(1)),
           y: Number(y.toFixed(1)),
-          r: Number((22 + seededNoise(seed + 9.4) * 13).toFixed(1)),
+          r: Number((18 + seededNoise(seed + 9.4) * 18).toFixed(1)),
         });
       }
     }
@@ -714,7 +728,70 @@ function createTreeLine() {
   return trees;
 }
 
+function createWaterEdgeDetails() {
+  const details: WaterEdgeDetail[] = [];
+
+  for (const hazard of waterHazards) {
+    for (let edgeIndex = 0; edgeIndex < hazard.points.length - 1; edgeIndex += 1) {
+      const start = hazard.points[edgeIndex];
+      const end = hazard.points[edgeIndex + 1];
+      const dx = end[0] - start[0];
+      const dy = end[1] - start[1];
+      const edgeLength = Math.hypot(dx, dy);
+      if (edgeLength < 16) {
+        continue;
+      }
+
+      const count = Math.max(1, Math.floor(edgeLength / 34));
+
+      for (let sampleIndex = 0; sampleIndex < count; sampleIndex += 1) {
+        const seed = hazard.id * 1000 + edgeIndex * 77 + sampleIndex * 13.31;
+        if (seededNoise(seed) < 0.28) {
+          continue;
+        }
+
+        const t = (sampleIndex + 0.35 + seededNoise(seed + 1.8) * 0.3) / count;
+        const tangentX = dx / edgeLength;
+        const tangentY = dy / edgeLength;
+        const normalX = -tangentY;
+        const normalY = tangentX;
+        const side = seededNoise(seed + 2.4) > 0.5 ? 1 : -1;
+        const offset = 8 + seededNoise(seed + 3.2) * 20;
+        const x = start[0] + dx * t + normalX * side * offset + tangentX * (seededNoise(seed + 4.1) - 0.5) * 18;
+        const y = start[1] + dy * t + normalY * side * offset + tangentY * (seededNoise(seed + 5.7) - 0.5) * 18;
+
+        if (x < 18 || x > worldWidth - 18 || y < 18 || y > worldHeight - 18) {
+          continue;
+        }
+
+        if (waterHazards.some((otherHazard) => pointInPolygon(x, y, otherHazard.points))) {
+          continue;
+        }
+
+        if (distanceToSurfaces(x, y) < roughCollarWidth * 0.45) {
+          continue;
+        }
+
+        const roll = seededNoise(seed + 8.8);
+        const kind: WaterEdgeDetail["kind"] = roll > 0.72 ? "shrub" : roll > 0.56 ? "flower" : "rock";
+
+        details.push({
+          id: details.length,
+          kind,
+          x: Number(x.toFixed(1)),
+          y: Number(y.toFixed(1)),
+          r: Number((kind === "rock" ? 5 + seededNoise(seed + 9.2) * 12 : 8 + seededNoise(seed + 9.2) * 14).toFixed(1)),
+          seed,
+        });
+      }
+    }
+  }
+
+  return details;
+}
+
 const trees = createTreeLine();
+const waterEdgeDetails = createWaterEdgeDetails();
 
 function surfaceAt(x: number, y: number): Surface {
   const priority: Surface["name"][] = ["bunker", "green", "tee", "rough", "fairway"];
@@ -842,6 +919,68 @@ function normalizedPolygon(points: Array<[number, number]>) {
   return normalized;
 }
 
+function drawTerrainBase(
+  ctx: CanvasRenderingContext2D,
+  sx: (value: number) => number,
+  sy: (value: number) => number,
+  width: number,
+  height: number,
+  scale: number,
+) {
+  ctx.fillStyle = "#1f5c32";
+  ctx.fillRect(0, 0, width, height);
+
+  const sunWash = ctx.createLinearGradient(width * 0.82, 0, width * 0.08, height);
+  sunWash.addColorStop(0, "rgba(218, 238, 130, 0.18)");
+  sunWash.addColorStop(0.36, "rgba(62, 117, 45, 0.04)");
+  sunWash.addColorStop(1, "rgba(2, 18, 12, 0.24)");
+  ctx.fillStyle = sunWash;
+  ctx.fillRect(0, 0, width, height);
+
+  for (let y = -40; y <= worldHeight + 40; y += 34) {
+    for (let x = -40; x <= worldWidth + 40; x += 34) {
+      const seed = x * 0.019 + y * 0.037;
+      const noise = seededNoise(seed);
+      if (noise < 0.45) {
+        continue;
+      }
+
+      const px = x + (seededNoise(seed + 2.1) - 0.5) * 26;
+      const py = y + (seededNoise(seed + 3.4) - 0.5) * 26;
+      const radius = (10 + seededNoise(seed + 5.2) * 22) * scale;
+      const alpha = 0.035 + seededNoise(seed + 8.9) * 0.055;
+      ctx.fillStyle = noise > 0.72 ? `rgba(134, 166, 67, ${alpha})` : `rgba(4, 33, 20, ${alpha})`;
+      ctx.beginPath();
+      ctx.ellipse(sx(px), sy(py), radius * 1.45, radius * 0.72, -0.65, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  ctx.strokeStyle = "rgba(236, 255, 185, 0.045)";
+  ctx.lineWidth = Math.max(0.7, 1.2 * scale);
+  for (let y = -worldHeight; y < worldHeight * 2; y += 62) {
+    ctx.beginPath();
+    ctx.moveTo(sx(-80), sy(y));
+    ctx.lineTo(sx(worldWidth + 80), sy(y - 160));
+    ctx.stroke();
+  }
+}
+
+function drawSurfaceLight(
+  ctx: CanvasRenderingContext2D,
+  sx: (value: number) => number,
+  sy: (value: number) => number,
+  scale: number,
+  strength = 1,
+) {
+  const light = ctx.createLinearGradient(sx(worldWidth), sy(0), sx(0), sy(worldHeight));
+  light.addColorStop(0, `rgba(249, 255, 194, ${0.16 * strength})`);
+  light.addColorStop(0.5, "rgba(255, 255, 255, 0)");
+  light.addColorStop(1, `rgba(5, 29, 17, ${0.2 * strength})`);
+  ctx.fillStyle = light;
+  ctx.fillRect(sx(0), sy(0), worldWidth * scale, worldHeight * scale);
+}
+
 function drawWater(
   ctx: CanvasRenderingContext2D,
   sx: (value: number) => number,
@@ -850,37 +989,176 @@ function drawWater(
   detail: "full" | "mini" = "full",
 ) {
   for (const hazard of waterHazards) {
+    const points = normalizedPolygon(hazard.points);
+    const center = polygonCentroid(points);
+
     ctx.save();
     tracePolygon(ctx, hazard.points, sx, sy);
-    ctx.fillStyle = "#2f8fac";
+    ctx.fillStyle = "rgba(0, 0, 0, 0.22)";
+    ctx.translate(14 * scale, 18 * scale);
+    ctx.fill();
+    ctx.restore();
+
+    ctx.save();
+    tracePolygon(ctx, hazard.points, sx, sy);
+    ctx.fillStyle = "#176d89";
     ctx.fill();
 
-    ctx.strokeStyle = "rgba(7, 42, 51, 0.24)";
-    ctx.lineWidth = Math.max(1, 2.2 * scale);
+    ctx.strokeStyle = "rgba(6, 31, 35, 0.38)";
+    ctx.lineWidth = Math.max(1.2, 3.2 * scale);
     ctx.stroke();
 
     ctx.clip();
 
-    const gradient = ctx.createLinearGradient(sx(0), sy(0), sx(worldWidth), sy(worldHeight));
-    gradient.addColorStop(0, "rgba(130, 223, 232, 0.2)");
-    gradient.addColorStop(0.5, "rgba(36, 121, 151, 0.08)");
-    gradient.addColorStop(1, "rgba(5, 55, 77, 0.2)");
+    const gradient = ctx.createRadialGradient(
+      sx(center.x - 28),
+      sy(center.y - 54),
+      8 * scale,
+      sx(center.x + 18),
+      sy(center.y + 18),
+      180 * scale,
+    );
+    gradient.addColorStop(0, "rgba(183, 250, 255, 0.7)");
+    gradient.addColorStop(0.22, "rgba(75, 190, 213, 0.34)");
+    gradient.addColorStop(0.72, "rgba(9, 88, 122, 0.22)");
+    gradient.addColorStop(1, "rgba(3, 37, 58, 0.48)");
     ctx.fillStyle = gradient;
     ctx.fillRect(sx(0), sy(0), worldWidth * scale, worldHeight * scale);
 
     if (detail === "full") {
-      ctx.strokeStyle = "rgba(222, 255, 247, 0.2)";
-      ctx.lineWidth = Math.max(0.7, 1.2 * scale);
-      for (let y = 0; y < worldHeight; y += 28) {
-        const wave = Math.sin((y + hazard.id * 31) * 0.034) * 10;
+      ctx.strokeStyle = "rgba(214, 255, 246, 0.2)";
+      ctx.lineWidth = Math.max(0.45, 0.9 * scale);
+      for (let y = 0; y < worldHeight; y += 22) {
+        const wave = Math.sin((y + hazard.id * 31) * 0.034) * 9;
         ctx.beginPath();
-        ctx.moveTo(sx(0), sy(y));
-        ctx.quadraticCurveTo(sx(worldWidth * 0.45), sy(y + wave), sx(worldWidth), sy(y - wave * 0.35));
+        ctx.moveTo(sx(-20), sy(y));
+        ctx.quadraticCurveTo(sx(worldWidth * 0.42), sy(y + wave), sx(worldWidth + 20), sy(y - wave * 0.35));
         ctx.stroke();
+      }
+
+      for (let i = 0; i < 28; i += 1) {
+        const seed = hazard.id * 34.7 + i * 7.31;
+        const sparkleX = center.x + (seededNoise(seed) - 0.5) * 190;
+        const sparkleY = center.y + (seededNoise(seed + 4.2) - 0.5) * 190;
+        if (!pointInPolygon(sparkleX, sparkleY, hazard.points)) {
+          continue;
+        }
+
+        const sparkle = (2.8 + seededNoise(seed + 8.1) * 5) * scale;
+        ctx.fillStyle = `rgba(235, 255, 240, ${0.18 + seededNoise(seed + 1.6) * 0.34})`;
+        ctx.beginPath();
+        ctx.ellipse(sx(sparkleX), sy(sparkleY), sparkle * 1.8, sparkle * 0.32, -0.55, 0, Math.PI * 2);
+        ctx.fill();
       }
     }
 
     ctx.restore();
+
+    ctx.save();
+    tracePolygon(ctx, hazard.points, sx, sy);
+    ctx.strokeStyle = "rgba(222, 205, 144, 0.28)";
+    ctx.lineWidth = Math.max(1, 2.8 * scale);
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
+function drawRock(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  radius: number,
+  seed: number,
+) {
+  ctx.fillStyle = "rgba(0, 0, 0, 0.24)";
+  ctx.beginPath();
+  ctx.ellipse(x + radius * 0.44, y + radius * 0.54, radius * 1.04, radius * 0.58, 0.42, 0, Math.PI * 2);
+  ctx.fill();
+
+  const gradient = ctx.createRadialGradient(
+    x - radius * 0.4,
+    y - radius * 0.45,
+    radius * 0.12,
+    x,
+    y,
+    radius * 1.1,
+  );
+  gradient.addColorStop(0, "#b8b98d");
+  gradient.addColorStop(0.52, "#777c5f");
+  gradient.addColorStop(1, "#3f493a");
+  ctx.fillStyle = gradient;
+  ctx.beginPath();
+  ctx.ellipse(x, y, radius * (0.75 + seededNoise(seed) * 0.42), radius * (0.5 + seededNoise(seed + 2) * 0.32), seed, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawShrub(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  radius: number,
+  seed: number,
+  flower = false,
+) {
+  const lobes = flower ? 5 : 4;
+
+  ctx.fillStyle = "rgba(0, 0, 0, 0.17)";
+  ctx.beginPath();
+  ctx.ellipse(x + radius * 0.26, y + radius * 0.34, radius * 0.94, radius * 0.5, 0.55, 0, Math.PI * 2);
+  ctx.fill();
+
+  for (let i = 0; i < lobes; i += 1) {
+    const angle = (Math.PI * 2 * i) / lobes + seededNoise(seed + i) * 0.45;
+    const spread = radius * (0.25 + seededNoise(seed + i * 3.3) * 0.32);
+    ctx.fillStyle = i % 2 === 0 ? "#2f823d" : "#256c37";
+    ctx.beginPath();
+    ctx.arc(
+      x + Math.cos(angle) * spread,
+      y + Math.sin(angle) * spread,
+      radius * (0.34 + seededNoise(seed + i * 4.7) * 0.24),
+      0,
+      Math.PI * 2,
+    );
+    ctx.fill();
+  }
+
+  if (flower) {
+    ctx.fillStyle = seededNoise(seed + 11) > 0.5 ? "rgba(206, 126, 196, 0.72)" : "rgba(238, 228, 134, 0.72)";
+    for (let i = 0; i < 4; i += 1) {
+      ctx.beginPath();
+      ctx.arc(
+        x + (seededNoise(seed + i * 2.2) - 0.5) * radius,
+        y + (seededNoise(seed + i * 4.1) - 0.5) * radius,
+        Math.max(1, radius * 0.1),
+        0,
+        Math.PI * 2,
+      );
+      ctx.fill();
+    }
+  }
+}
+
+function drawWaterEdgeDetails(
+  ctx: CanvasRenderingContext2D,
+  sx: (value: number) => number,
+  sy: (value: number) => number,
+  scale: number,
+  detail: "full" | "mini" = "full",
+) {
+  if (detail === "mini") {
+    return;
+  }
+
+  for (const item of waterEdgeDetails) {
+    const x = sx(item.x);
+    const y = sy(item.y);
+    const radius = item.r * scale;
+
+    if (item.kind === "rock") {
+      drawRock(ctx, x, y, radius, item.seed);
+    } else {
+      drawShrub(ctx, x, y, radius, item.seed, item.kind === "flower");
+    }
   }
 }
 
@@ -897,6 +1175,7 @@ function drawSurfaceTextures(
       ctx.save();
       paintSurfaceBase(ctx, surface, sx, sy);
       clipSurface(ctx, surface, sx, sy);
+      drawSurfaceLight(ctx, sx, sy, scale, surface.type === "bunker" ? 0.55 : 0.85);
 
       if (surface.type === "bunker") {
         ctx.strokeStyle = "rgba(111, 85, 39, 0.2)";
@@ -976,6 +1255,8 @@ function drawTrees(
     const x = sx(tree.x);
     const y = sy(tree.y);
     const radius = Math.max(2.5, tree.r * scale);
+    const shadowX = x + sunVector.x * radius * 1.15;
+    const shadowY = y + sunVector.y * radius * 1.35;
     const canopy = [
       { x: 0, y: 0, r: 0.86, c: "#1f5f32" },
       { x: -0.34, y: -0.18, r: 0.52, c: "#2f7c3f" },
@@ -983,10 +1264,17 @@ function drawTrees(
       { x: 0.12, y: 0.32, r: 0.48, c: "#245f34" },
     ];
 
-    ctx.fillStyle = detail === "full" ? "rgba(0, 0, 0, 0.18)" : "rgba(0, 0, 0, 0.12)";
+    ctx.fillStyle = detail === "full" ? "rgba(0, 0, 0, 0.28)" : "rgba(0, 0, 0, 0.12)";
     ctx.beginPath();
-    ctx.ellipse(x + radius * 0.18, y + radius * 0.18, radius * 0.86, radius * 0.58, 0.4, 0, Math.PI * 2);
+    ctx.ellipse(shadowX, shadowY, radius * 1.22, radius * 0.48, 0.75, 0, Math.PI * 2);
     ctx.fill();
+
+    if (detail === "full") {
+      ctx.fillStyle = "rgba(0, 0, 0, 0.12)";
+      ctx.beginPath();
+      ctx.ellipse(x + sunVector.x * radius * 2.05, y + sunVector.y * radius * 2.35, radius * 1.48, radius * 0.42, 0.75, 0, Math.PI * 2);
+      ctx.fill();
+    }
 
     for (const lobe of detail === "full" ? canopy : canopy.slice(0, 1)) {
       ctx.fillStyle = lobe.c;
@@ -996,9 +1284,9 @@ function drawTrees(
     }
 
     if (detail === "full") {
-      ctx.fillStyle = "rgba(238, 255, 217, 0.16)";
+      ctx.fillStyle = "rgba(238, 255, 217, 0.24)";
       ctx.beginPath();
-      ctx.arc(x - radius * 0.22, y - radius * 0.3, radius * 0.24, 0, Math.PI * 2);
+      ctx.arc(x - radius * 0.28, y - radius * 0.36, radius * 0.22, 0, Math.PI * 2);
       ctx.fill();
 
       ctx.fillStyle = "rgba(50, 33, 20, 0.28)";
@@ -1037,6 +1325,22 @@ function drawPin(
   ctx.fill();
 }
 
+function drawAtmosphere(ctx: CanvasRenderingContext2D, width: number, height: number) {
+  const sun = ctx.createRadialGradient(width * 0.78, height * 0.04, 0, width * 0.78, height * 0.04, height * 0.72);
+  sun.addColorStop(0, "rgba(255, 244, 164, 0.24)");
+  sun.addColorStop(0.32, "rgba(255, 230, 128, 0.07)");
+  sun.addColorStop(1, "rgba(255, 230, 128, 0)");
+  ctx.fillStyle = sun;
+  ctx.fillRect(0, 0, width, height);
+
+  const vignette = ctx.createRadialGradient(width * 0.52, height * 0.45, height * 0.22, width * 0.52, height * 0.45, height * 0.78);
+  vignette.addColorStop(0, "rgba(0, 0, 0, 0)");
+  vignette.addColorStop(0.62, "rgba(0, 0, 0, 0.05)");
+  vignette.addColorStop(1, "rgba(0, 0, 0, 0.34)");
+  ctx.fillStyle = vignette;
+  ctx.fillRect(0, 0, width, height);
+}
+
 function drawGrass(
   ctx: CanvasRenderingContext2D,
   sx: (value: number) => number,
@@ -1045,14 +1349,15 @@ function drawGrass(
   height: number,
   scale: number,
 ) {
-  ctx.fillStyle = heavy.color;
-  ctx.fillRect(0, 0, width, height);
+  drawTerrainBase(ctx, sx, sy, width, height, scale);
 
   drawWater(ctx, sx, sy, scale);
   drawMaintainedRough(ctx, sx, sy, scale);
   drawSurfacePolygons(ctx, sx, sy);
   drawSurfaceTextures(ctx, sx, sy, scale);
+  drawWaterEdgeDetails(ctx, sx, sy, scale);
   drawTrees(ctx, sx, sy, scale);
+  drawAtmosphere(ctx, width, height);
   drawPin(ctx, sx, sy, scale);
 
 }
