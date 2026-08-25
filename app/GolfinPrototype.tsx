@@ -56,7 +56,7 @@ type ClubDefinition = {
   isPutter?: boolean;
 };
 
-type HoleState = "playing" | "celebrating" | "complete";
+type HoleState = "playing" | "sinking" | "celebrating" | "complete" | "outOfBounds";
 
 const fairway: Surface = {
   name: "fairway",
@@ -286,6 +286,9 @@ const treeSetback = 46;
 const bunkerScale = 1.5;
 const cupRadius = 9;
 const cupCaptureSpeed = 36;
+const sinkDurationMs = 620;
+const celebrationDurationMs = 1450;
+const outOfBoundsDurationMs = 1450;
 const scorecardHoleYards = 389;
 const fixedSwingMph: SwingSpeed = 100;
 const clubDefinitions: ClubDefinition[] = [
@@ -451,6 +454,10 @@ function speed(ball: BallState) {
 
 function distanceToPin(ball: BallState) {
   return Math.hypot(ball.x - course.pin[0], ball.y - course.pin[1]);
+}
+
+function isOutOfBounds(ball: BallState) {
+  return ball.x < 28 || ball.x > worldWidth - 28 || ball.y < 34 || ball.y > worldHeight - 34;
 }
 
 function clubDistance(club: ClubDefinition) {
@@ -964,20 +971,29 @@ function drawBall(
   sy: (value: number) => number,
   scale: number,
   ball: BallState,
+  sinkProgress = 0,
 ) {
   const lift = ball.z * 0.2;
-  const radius = (3.6 + Math.min(2.1, ball.z * 0.004)) * scale;
+  const sinkScale = 1 - sinkProgress * 0.82;
+  const radius = (3.6 + Math.min(2.1, ball.z * 0.004)) * scale * sinkScale;
   const shadowScale = clamp(1 - ball.z / 460, 0.28, 1);
   const surface = surfaceAt(ball.x, ball.y);
 
+  if (sinkProgress > 0) {
+    ctx.fillStyle = `rgba(12, 22, 14, ${0.52 + sinkProgress * 0.26})`;
+    ctx.beginPath();
+    ctx.ellipse(sx(ball.x), sy(ball.y), 5.4 * scale, 3.8 * scale, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
   ctx.fillStyle = surface.color;
-  ctx.globalAlpha = 0.2;
+  ctx.globalAlpha = 0.2 * (1 - sinkProgress);
   ctx.beginPath();
   ctx.arc(sx(ball.x), sy(ball.y), 8.5 * scale, 0, Math.PI * 2);
   ctx.fill();
   ctx.globalAlpha = 1;
 
-  ctx.fillStyle = `rgba(0, 0, 0, ${0.32 * shadowScale})`;
+  ctx.fillStyle = `rgba(0, 0, 0, ${0.32 * shadowScale * (1 - sinkProgress)})`;
   ctx.beginPath();
   ctx.ellipse(
     sx(ball.x),
@@ -991,7 +1007,7 @@ function drawBall(
   ctx.fill();
 
   const ballX = sx(ball.x);
-  const ballY = sy(ball.y - lift);
+  const ballY = sy(ball.y - lift + sinkProgress * 3.6);
   const gradient = ctx.createRadialGradient(
     ballX - radius * 0.35,
     ballY - radius * 0.42,
@@ -1120,8 +1136,10 @@ export function GolfinPrototype() {
   const movingRef = useRef(false);
   const overviewUntilRef = useRef<number>(0);
   const celebrationTimeoutRef = useRef<number | null>(null);
+  const sinkStartedAtRef = useRef<number>(0);
   const ballRef = useRef<BallState>({ ...startBall });
   const holedRef = useRef(false);
+  const holeStateRef = useRef<HoleState>("playing");
   const selectedClubRef = useRef<ClubDefinition>(defaultClub);
   const cameraRef = useRef<CameraState>({
     x: worldWidth / 2,
@@ -1136,6 +1154,11 @@ export function GolfinPrototype() {
   const [moving, setMoving] = useState(false);
   const [holeState, setHoleState] = useState<HoleState>("playing");
   const [selectedClubId, setSelectedClubId] = useState(defaultClub.id);
+
+  function changeHoleState(nextState: HoleState) {
+    holeStateRef.current = nextState;
+    setHoleState(nextState);
+  }
 
   const draw = useCallback((timestamp = performance.now()) => {
     const canvas = canvasRef.current;
@@ -1158,6 +1181,7 @@ export function GolfinPrototype() {
     const height = rect.height;
     const ball = ballRef.current;
     const camera = cameraRef.current;
+    const currentHoleState = holeStateRef.current;
     const overviewZoom = Math.min(width / worldWidth, height / worldHeight) * 0.9;
     const detailZoom = clamp(Math.min(width, height) / 250, 1.45, 2.8);
     const currentSpeed = speed(ball);
@@ -1184,19 +1208,23 @@ export function GolfinPrototype() {
     const sx = (value: number) => width / 2 + (value - camera.x) * camera.zoom;
     const sy = (value: number) => height / 2 + (value - camera.y) * camera.zoom;
     const showingOverview = camera.zoom < detailZoom * 0.62;
+    const sinkProgress =
+      currentHoleState === "sinking"
+        ? clamp((timestamp - sinkStartedAtRef.current) / sinkDurationMs, 0, 1)
+        : 0;
 
     drawGrass(ctx, sx, sy, width, height, camera.zoom);
-    drawTrail(ctx, sx, sy, camera.zoom, trailRef.current);
-    if (!holedRef.current) {
+    if (currentHoleState === "playing") {
+      drawTrail(ctx, sx, sy, camera.zoom, trailRef.current);
       drawAimGhost(ctx, sx, sy, camera.zoom, ball, selectedClubRef.current);
     }
-    if (!holedRef.current) {
-      drawBall(ctx, sx, sy, camera.zoom, ball);
+    if (currentHoleState === "playing" || currentHoleState === "sinking") {
+      drawBall(ctx, sx, sy, camera.zoom, ball, sinkProgress);
     }
-    if (showingOverview) {
+    if (currentHoleState === "playing" && showingOverview) {
       drawOverviewMarker(ctx, sx, sy, camera.zoom, ball);
     }
-    if (!holedRef.current) {
+    if (currentHoleState === "playing") {
       drawMiniMap(ctx, width, height, ball);
       drawHud(ctx, width, ball, selectedClubRef.current);
     }
@@ -1255,14 +1283,9 @@ export function GolfinPrototype() {
     ball.z += ball.vz * dt;
     ball.spin += speed(ball) * dt * 0.018;
 
-    if (ball.x < 28 || ball.x > worldWidth - 28) {
-      ball.x = clamp(ball.x, 28, worldWidth - 28);
-      ball.vx *= -0.48;
-    }
-
-    if (ball.y < 34 || ball.y > worldHeight - 34) {
-      ball.y = clamp(ball.y, 34, worldHeight - 34);
-      ball.vy *= -0.48;
+    if (isOutOfBounds(ball)) {
+      beginOutOfBounds(timestamp);
+      return;
     }
 
     if (ball.z <= 0) {
@@ -1278,24 +1301,7 @@ export function GolfinPrototype() {
 
     const canDrop = ball.z === 0 && Math.abs(ball.vz) < 1 && speed(ball) < cupCaptureSpeed && distanceToPin(ball) <= cupRadius;
     if (canDrop) {
-      ball.x = course.pin[0];
-      ball.y = course.pin[1];
-      ball.z = 0;
-      ball.vx = 0;
-      ball.vy = 0;
-      ball.vz = 0;
-      movingRef.current = false;
-      holedRef.current = true;
-      setMoving(false);
-      setHoleState("celebrating");
-      celebrationTimeoutRef.current = window.setTimeout(() => {
-        celebrationTimeoutRef.current = null;
-        setHoleState("complete");
-      }, 1450);
-      overviewUntilRef.current = timestamp + 1600;
-      frameRef.current = null;
-      lastTimeRef.current = null;
-      trailRef.current.push({ x: ball.x, y: ball.y, z: ball.z });
+      beginHoleCapture(timestamp);
       return;
     }
 
@@ -1322,6 +1328,52 @@ export function GolfinPrototype() {
     frameRef.current = requestAnimationFrame(step);
   }
 
+  function beginHoleCapture(timestamp: number) {
+    const ball = ballRef.current;
+    ball.x = course.pin[0];
+    ball.y = course.pin[1];
+    ball.z = 0;
+    ball.vx = 0;
+    ball.vy = 0;
+    ball.vz = 0;
+    movingRef.current = false;
+    holedRef.current = true;
+    sinkStartedAtRef.current = timestamp;
+    setMoving(false);
+    changeHoleState("sinking");
+    overviewUntilRef.current = timestamp + 1600;
+    frameRef.current = null;
+    lastTimeRef.current = null;
+    trailRef.current.push({ x: ball.x, y: ball.y, z: ball.z });
+    celebrationTimeoutRef.current = window.setTimeout(() => {
+      changeHoleState("celebrating");
+      celebrationTimeoutRef.current = window.setTimeout(() => {
+        celebrationTimeoutRef.current = null;
+        changeHoleState("complete");
+      }, celebrationDurationMs);
+    }, sinkDurationMs);
+  }
+
+  function beginOutOfBounds(timestamp: number) {
+    const ball = ballRef.current;
+    ball.x = clamp(ball.x, 28, worldWidth - 28);
+    ball.y = clamp(ball.y, 34, worldHeight - 34);
+    ball.z = Math.max(0, ball.z);
+    ball.vx = 0;
+    ball.vy = 0;
+    ball.vz = 0;
+    movingRef.current = false;
+    setMoving(false);
+    changeHoleState("outOfBounds");
+    frameRef.current = null;
+    lastTimeRef.current = null;
+    overviewUntilRef.current = timestamp + outOfBoundsDurationMs;
+    celebrationTimeoutRef.current = window.setTimeout(() => {
+      celebrationTimeoutRef.current = null;
+      resetBall();
+    }, outOfBoundsDurationMs);
+  }
+
   function resetBall() {
     if (celebrationTimeoutRef.current) {
       window.clearTimeout(celebrationTimeoutRef.current);
@@ -1331,7 +1383,7 @@ export function GolfinPrototype() {
     ballRef.current = { ...startBall };
     trailRef.current = [];
     holedRef.current = false;
-    setHoleState("playing");
+    changeHoleState("playing");
     overviewUntilRef.current = performance.now() + 1500;
     draw();
   }
@@ -1344,11 +1396,6 @@ export function GolfinPrototype() {
     if (holedRef.current) {
       resetBall();
       return;
-    }
-
-    const ball = ballRef.current;
-    if (ball.x > worldWidth - 90 || ball.y < 80) {
-      resetBall();
     }
 
     trailRef.current = [];
@@ -1382,6 +1429,11 @@ export function GolfinPrototype() {
           <span className="hole-flash hole-flash-b" />
           <span className="hole-flash hole-flash-c" />
           <strong>HOLE!</strong>
+        </div>
+      )}
+      {holeState === "outOfBounds" && (
+        <div className="bounds-warning" aria-live="polite">
+          <strong>OUT OF BOUNDS</strong>
         </div>
       )}
       {holeState === "complete" && (
