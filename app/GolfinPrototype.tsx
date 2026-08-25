@@ -1,5 +1,6 @@
 "use client";
 
+import type { CSSProperties } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 type BallState = {
@@ -286,7 +287,7 @@ const treeSetback = 46;
 const bunkerScale = 1.5;
 const cupRadius = 9;
 const cupCaptureSpeed = 36;
-const sinkDurationMs = 620;
+const sinkDurationMs = 950;
 const celebrationDurationMs = 1450;
 const outOfBoundsDurationMs = 1450;
 const scorecardHoleYards = 389;
@@ -359,6 +360,24 @@ const clubDefinitions: ClubDefinition[] = [
   },
 ];
 const defaultClub = clubDefinitions[0];
+const holeSparks = [
+  { angle: -8, color: "#f8fff2", delay: 0, length: 150, arc: 44, bend: -8 },
+  { angle: 14, color: "#f8d766", delay: 35, length: 132, arc: 38, bend: 10 },
+  { angle: 36, color: "#ff8f70", delay: 70, length: 144, arc: 46, bend: -12 },
+  { angle: 58, color: "#7ee28d", delay: 10, length: 124, arc: 36, bend: 9 },
+  { angle: 82, color: "#f8fff2", delay: 95, length: 136, arc: 42, bend: -7 },
+  { angle: 112, color: "#7fd6ff", delay: 45, length: 128, arc: 40, bend: 12 },
+  { angle: 138, color: "#f8d766", delay: 80, length: 148, arc: 48, bend: -11 },
+  { angle: 164, color: "#ff8f70", delay: 20, length: 118, arc: 34, bend: 8 },
+  { angle: 190, color: "#f8fff2", delay: 110, length: 140, arc: 42, bend: -9 },
+  { angle: 216, color: "#7ee28d", delay: 55, length: 126, arc: 36, bend: 11 },
+  { angle: 242, color: "#7fd6ff", delay: 90, length: 154, arc: 50, bend: -13 },
+  { angle: 268, color: "#f8d766", delay: 25, length: 122, arc: 38, bend: 10 },
+  { angle: 294, color: "#ff8f70", delay: 65, length: 146, arc: 44, bend: -8 },
+  { angle: 320, color: "#f8fff2", delay: 105, length: 130, arc: 40, bend: 9 },
+  { angle: 344, color: "#7ee28d", delay: 50, length: 138, arc: 46, bend: -10 },
+  { angle: 368, color: "#7fd6ff", delay: 85, length: 120, arc: 34, bend: 12 },
+];
 
 function orientCourse(source: CourseData): CourseData {
   const teePoint = source.holeLine[0];
@@ -1187,7 +1206,11 @@ export function GolfinPrototype() {
     const currentSpeed = speed(ball);
     const shotZoomAmount = clamp((currentSpeed - 80) / 460, 0, 1);
 
-    if (movingRef.current) {
+    if (currentHoleState === "sinking") {
+      camera.targetX = course.pin[0];
+      camera.targetY = course.pin[1];
+      camera.targetZoom = Math.max(detailZoom * 1.1, 2.15);
+    } else if (movingRef.current) {
       camera.targetX = clamp(ball.x + ball.vx * 0.1, 80, worldWidth - 80);
       camera.targetY = clamp(ball.y + ball.vy * 0.1, 80, worldHeight - 80);
       camera.targetZoom = lerp(detailZoom, overviewZoom * 1.08, shotZoomAmount);
@@ -1425,9 +1448,24 @@ export function GolfinPrototype() {
       <canvas className="physics-canvas" ref={canvasRef} />
       {holeState === "celebrating" && (
         <div className="hole-celebration" aria-live="polite">
-          <span className="hole-flash hole-flash-a" />
-          <span className="hole-flash hole-flash-b" />
-          <span className="hole-flash hole-flash-c" />
+          <span className="hole-sparks" aria-hidden="true">
+            {holeSparks.map((spark, index) => (
+              <span
+                className="hole-spark"
+                key={`${spark.angle}-${index}`}
+                style={{
+                  "--spark-angle": `${spark.angle}deg`,
+                  "--spark-arc": `${spark.arc}px`,
+                  "--spark-bend": `${spark.bend}deg`,
+                  "--spark-color": spark.color,
+                  "--spark-delay": `${spark.delay}ms`,
+                  "--spark-end-bend": `${spark.bend * -0.9}deg`,
+                  "--spark-length": `${spark.length}px`,
+                  "--spark-mid-bend": `${spark.bend * -0.55}deg`,
+                } as CSSProperties}
+              />
+            ))}
+          </span>
           <strong>HOLE!</strong>
         </div>
       )}
