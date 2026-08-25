@@ -26,6 +26,11 @@ type CourseSurface = {
   points: Array<[number, number]>;
 };
 
+type WaterHazard = {
+  id: number;
+  points: Array<[number, number]>;
+};
+
 type CourseData = {
   name: string;
   ref: string;
@@ -432,6 +437,49 @@ function orientCourse(source: CourseData): CourseData {
 const course = orientCourse(goodwoodParkHole1);
 const teePoint = course.holeLine[0];
 const worldUnitsPerYard = lineLength(course.holeLine) / scorecardHoleYards;
+const waterHazards: WaterHazard[] = [
+  {
+    id: 1,
+    points: [
+      [674, 92],
+      [746, 72],
+      [824, 112],
+      [858, 206],
+      [812, 292],
+      [704, 312],
+      [626, 254],
+      [618, 154],
+      [674, 92],
+    ],
+  },
+  {
+    id: 2,
+    points: [
+      [54, 574],
+      [136, 516],
+      [236, 546],
+      [260, 670],
+      [218, 790],
+      [110, 830],
+      [34, 746],
+      [28, 642],
+      [54, 574],
+    ],
+  },
+  {
+    id: 3,
+    points: [
+      [698, 908],
+      [802, 934],
+      [862, 1030],
+      [826, 1138],
+      [722, 1176],
+      [636, 1114],
+      [622, 1002],
+      [698, 908],
+    ],
+  },
+];
 
 const startBall: BallState = {
   x: teePoint[0],
@@ -485,7 +533,11 @@ function distanceToPin(ball: BallState) {
 }
 
 function isOutOfBounds(ball: BallState) {
-  return ball.x < 28 || ball.x > worldWidth - 28 || ball.y < 34 || ball.y > worldHeight - 34;
+  return ball.x < 28 || ball.x > worldWidth - 28 || ball.y < 34 || ball.y > worldHeight - 34 || isInWater(ball);
+}
+
+function isInWater(ball: BallState) {
+  return ball.z < 18 && waterHazards.some((hazard) => pointInPolygon(ball.x, ball.y, hazard.points));
 }
 
 function clubDistance(club: ClubDefinition) {
@@ -740,7 +792,16 @@ function clipSurface(ctx: CanvasRenderingContext2D, surface: CourseSurface, sx: 
 }
 
 function traceSurface(ctx: CanvasRenderingContext2D, surface: CourseSurface, sx: (value: number) => number, sy: (value: number) => number) {
-  const points = normalizedPolygon(surface.points);
+  tracePolygon(ctx, surface.points, sx, sy);
+}
+
+function tracePolygon(
+  ctx: CanvasRenderingContext2D,
+  sourcePoints: Array<[number, number]>,
+  sx: (value: number) => number,
+  sy: (value: number) => number,
+) {
+  const points = normalizedPolygon(sourcePoints);
 
   ctx.beginPath();
 
@@ -780,6 +841,48 @@ function normalizedPolygon(points: Array<[number, number]>) {
   }
 
   return normalized;
+}
+
+function drawWater(
+  ctx: CanvasRenderingContext2D,
+  sx: (value: number) => number,
+  sy: (value: number) => number,
+  scale: number,
+  detail: "full" | "mini" = "full",
+) {
+  for (const hazard of waterHazards) {
+    ctx.save();
+    tracePolygon(ctx, hazard.points, sx, sy);
+    ctx.fillStyle = "#2f8fac";
+    ctx.fill();
+
+    ctx.strokeStyle = "rgba(7, 42, 51, 0.24)";
+    ctx.lineWidth = Math.max(1, 2.2 * scale);
+    ctx.stroke();
+
+    ctx.clip();
+
+    const gradient = ctx.createLinearGradient(sx(0), sy(0), sx(worldWidth), sy(worldHeight));
+    gradient.addColorStop(0, "rgba(130, 223, 232, 0.2)");
+    gradient.addColorStop(0.5, "rgba(36, 121, 151, 0.08)");
+    gradient.addColorStop(1, "rgba(5, 55, 77, 0.2)");
+    ctx.fillStyle = gradient;
+    ctx.fillRect(sx(0), sy(0), worldWidth * scale, worldHeight * scale);
+
+    if (detail === "full") {
+      ctx.strokeStyle = "rgba(222, 255, 247, 0.2)";
+      ctx.lineWidth = Math.max(0.7, 1.2 * scale);
+      for (let y = 0; y < worldHeight; y += 28) {
+        const wave = Math.sin((y + hazard.id * 31) * 0.034) * 10;
+        ctx.beginPath();
+        ctx.moveTo(sx(0), sy(y));
+        ctx.quadraticCurveTo(sx(worldWidth * 0.45), sy(y + wave), sx(worldWidth), sy(y - wave * 0.35));
+        ctx.stroke();
+      }
+    }
+
+    ctx.restore();
+  }
 }
 
 function drawSurfaceTextures(
@@ -946,6 +1049,7 @@ function drawGrass(
   ctx.fillStyle = heavy.color;
   ctx.fillRect(0, 0, width, height);
 
+  drawWater(ctx, sx, sy, scale);
   drawMaintainedRough(ctx, sx, sy, scale);
   drawSurfacePolygons(ctx, sx, sy);
   drawSurfaceTextures(ctx, sx, sy, scale);
@@ -1107,6 +1211,7 @@ function drawMiniMap(ctx: CanvasRenderingContext2D, width: number, height: numbe
 
   ctx.fillStyle = heavy.color;
   ctx.fillRect(left, top, mapWidth, mapHeight);
+  drawWater(ctx, sx, sy, scale, "mini");
   drawMaintainedRough(ctx, sx, sy, scale);
   drawSurfacePolygons(ctx, sx, sy);
   drawTrees(ctx, sx, sy, scale, "mini");
