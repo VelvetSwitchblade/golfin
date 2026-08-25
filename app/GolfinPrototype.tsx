@@ -56,6 +56,8 @@ type GrassTextureSpec = {
 type RenderRules = {
   drawWater: boolean;
   drawScenery: boolean;
+  drawGrassEdges: boolean;
+  drawWindSheen: boolean;
   useWaterPenalties: boolean;
   windDirection: number;
   windStrength: number;
@@ -392,6 +394,8 @@ const fixedSwingMph: SwingSpeed = 100;
 const renderRules: RenderRules = {
   drawWater: false,
   drawScenery: false,
+  drawGrassEdges: false,
+  drawWindSheen: false,
   useWaterPenalties: false,
   windDirection: -0.55,
   windStrength: 0.38,
@@ -1243,34 +1247,6 @@ function drawTerrainBase(
   sunWash.addColorStop(1, "rgba(2, 18, 12, 0.24)");
   ctx.fillStyle = sunWash;
   ctx.fillRect(0, 0, width, height);
-
-  for (let y = -40; y <= worldHeight + 40; y += 34) {
-    for (let x = -40; x <= worldWidth + 40; x += 34) {
-      const seed = x * 0.019 + y * 0.037;
-      const noise = seededNoise(seed);
-      if (noise < 0.45) {
-        continue;
-      }
-
-      const px = x + (seededNoise(seed + 2.1) - 0.5) * 26;
-      const py = y + (seededNoise(seed + 3.4) - 0.5) * 26;
-      const radius = (10 + seededNoise(seed + 5.2) * 22) * scale;
-      const alpha = 0.035 + seededNoise(seed + 8.9) * 0.055;
-      ctx.fillStyle = noise > 0.72 ? `rgba(134, 166, 67, ${alpha})` : `rgba(4, 33, 20, ${alpha})`;
-      ctx.beginPath();
-      ctx.ellipse(sx(px), sy(py), radius * 1.45, radius * 0.72, -0.65, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
-
-  ctx.strokeStyle = "rgba(236, 255, 185, 0.045)";
-  ctx.lineWidth = Math.max(0.7, 1.2 * scale);
-  for (let y = -worldHeight; y < worldHeight * 2; y += 62) {
-    ctx.beginPath();
-    ctx.moveTo(sx(-80), sy(y));
-    ctx.lineTo(sx(worldWidth + 80), sy(y - 160));
-    ctx.stroke();
-  }
 }
 
 function drawSurfaceLight(
@@ -1581,51 +1557,6 @@ function drawSurfaceTextures(
       clipSurface(ctx, surface, sx, sy);
       drawSurfaceLight(ctx, sx, sy, scale, 0.7);
 
-      if (surface.type === "green") {
-        ctx.strokeStyle = "rgba(236, 255, 225, 0.2)";
-        ctx.lineWidth = Math.max(0.7, 1 * scale);
-        for (let y = 0; y < worldHeight; y += 16) {
-          const lean = Math.sin(y * 0.024) * 4;
-          ctx.beginPath();
-          ctx.moveTo(sx(0), sy(y));
-          ctx.lineTo(sx(worldWidth), sy(y + lean));
-          ctx.stroke();
-        }
-
-        ctx.strokeStyle = "rgba(21, 84, 39, 0.24)";
-        ctx.lineWidth = Math.max(4, 8 * scale);
-        traceSurface(ctx, surface, sx, sy);
-        ctx.stroke();
-      } else if (surface.type === "fairway" || surface.type === "tee") {
-        const bandStep = surface.type === "tee" ? 22 : 36;
-        for (let y = 0; y < worldHeight; y += bandStep) {
-          const alternate = Math.floor(y / bandStep) % 2 === 0;
-          ctx.fillStyle = alternate ? "rgba(255,255,255,0.055)" : "rgba(20,75,34,0.055)";
-          ctx.fillRect(sx(0), sy(y), worldWidth * scale, bandStep * 0.52 * scale);
-        }
-
-        ctx.strokeStyle = "rgba(244,255,236,0.12)";
-        ctx.lineWidth = Math.max(0.6, 1 * scale);
-        for (let y = 0; y < worldHeight; y += 72) {
-          ctx.beginPath();
-          ctx.moveTo(sx(0), sy(y));
-          ctx.lineTo(sx(worldWidth), sy(y + Math.sin(y * 0.02) * 4));
-          ctx.stroke();
-        }
-      } else if (surface.type === "rough") {
-        ctx.strokeStyle = "rgba(16, 66, 31, 0.28)";
-        ctx.lineWidth = Math.max(0.8, 1.4 * scale);
-        for (let i = 0; i < surface.points.length * 8; i += 1) {
-          const base = surface.points[i % surface.points.length];
-          const x = base[0] + Math.sin(i * 4.891) * 26;
-          const y = base[1] + Math.cos(i * 7.123) * 26;
-          ctx.beginPath();
-          ctx.moveTo(sx(x), sy(y));
-          ctx.lineTo(sx(x + Math.sin(i) * 9), sy(y - 8));
-          ctx.stroke();
-        }
-      }
-
       ctx.restore();
     }
   }
@@ -1745,8 +1676,12 @@ function drawGrass(
   drawMaintainedRough(ctx, sx, sy, scale);
   drawSurfacePolygons(ctx, sx, sy, scale);
   drawSurfaceTextures(ctx, sx, sy, scale);
-  drawLiveGrassEdges(ctx, sx, sy, scale, timestamp);
-  drawWindGrassSheen(ctx, sx, sy, scale, timestamp);
+  if (renderRules.drawGrassEdges) {
+    drawLiveGrassEdges(ctx, sx, sy, scale, timestamp);
+  }
+  if (renderRules.drawWindSheen) {
+    drawWindGrassSheen(ctx, sx, sy, scale, timestamp);
+  }
   if (renderRules.drawScenery) {
     drawWaterEdgeDetails(ctx, sx, sy, scale);
     drawTrees(ctx, sx, sy, scale);
