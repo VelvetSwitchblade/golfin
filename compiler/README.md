@@ -35,6 +35,7 @@ The current compiler exports:
 
 - `terrain.glb`: adaptive terrain mesh generated from the semantic surface map and DTM adapter
 - `collision.glb`: collision mesh generated from the same DTM and semantic classification
+- `terrain-debug.json`: readable terrain mesh payload for compiler inspection tooling
 - `surface-map.json`: compact base64 `uint8` semantic surface map
 - `surface-id.png`: visual/debug surface texture
 - `surface.r8`: raw one-byte-per-pixel surface ID texture data

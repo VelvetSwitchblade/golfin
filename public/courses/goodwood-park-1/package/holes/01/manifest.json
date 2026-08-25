@@ -13,6 +13,7 @@
   "assets": {
     "terrainMesh": "terrain.glb",
     "collisionMesh": "collision.glb",
+    "terrainDebug": "terrain-debug.json",
     "surfaceMap": "surface-map.json",
     "surfaceTexture": "surface-id.png",
     "surfaceTextureRaw": "surface.r8",

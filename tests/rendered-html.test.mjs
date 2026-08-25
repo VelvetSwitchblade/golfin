@@ -2,13 +2,13 @@ import assert from "node:assert/strict";
 import { access, readFile } from "node:fs/promises";
 import test from "node:test";
 
-async function render() {
+async function render(pathname = "/") {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
   workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
   const { default: worker } = await import(workerUrl.href);
 
   return worker.fetch(
-    new Request("http://localhost/", {
+    new Request(`http://localhost${pathname}`, {
       headers: { accept: "text/html" },
     }),
     {
@@ -53,6 +53,7 @@ test("compiled Goodwood hole assets are present", async () => {
     access("public/courses/goodwood-park-1/package/holes/01/manifest.json"),
     access("public/courses/goodwood-park-1/package/holes/01/gameplay.json"),
     access("public/courses/goodwood-park-1/package/holes/01/surface-map.json"),
+    access("public/courses/goodwood-park-1/package/holes/01/terrain-debug.json"),
     access("public/courses/goodwood-park-1/package/holes/01/surface-id.png"),
     access("public/courses/goodwood-park-1/package/holes/01/surface.r8"),
     access("public/courses/goodwood-park-1/package/holes/01/materials.json"),
@@ -61,4 +62,20 @@ test("compiled Goodwood hole assets are present", async () => {
     access("public/courses/goodwood-park-1/package/holes/01/collision.json"),
     access("public/courses/goodwood-park-1/package/holes/01/validation.json"),
   ]);
+
+  const terrainDebug = JSON.parse(
+    await readFile("public/courses/goodwood-park-1/package/holes/01/terrain-debug.json", "utf8"),
+  );
+  assert.equal(terrainDebug.schema, "golfin.terrain-debug.v0");
+  assert.equal(terrainDebug.stats.triangles, 7220);
+  assert.ok(terrainDebug.vertices.length > 0);
+});
+
+test("server-renders the course inspector shell", async () => {
+  const response = await render("/inspector");
+  assert.equal(response.status, 200);
+
+  const html = await response.text();
+  assert.match(html, /<title>Golfin Course Inspector<\/title>/i);
+  assert.match(html, /Loading compiled hole package/);
 });

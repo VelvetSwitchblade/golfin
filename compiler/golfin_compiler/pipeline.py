@@ -218,6 +218,7 @@ def build_hole_package(course: CourseModel, build_id: str, dtm: DTMGrid) -> dict
                 "assets": {
                     "terrainMesh": "terrain.glb",
                     "collisionMesh": "collision.glb",
+                    "terrainDebug": "terrain-debug.json",
                     "surfaceMap": "surface-map.json",
                     "surfaceTexture": "surface-id.png",
                     "surfaceTextureRaw": "surface.r8",
@@ -331,6 +332,7 @@ def write_package(output_dir: Path, output: dict[str, Any]) -> None:
     (hole_dir / "manifest.json").write_text(json.dumps(output["hole"]["manifest"], indent=2) + "\n")
     (hole_dir / "gameplay.json").write_text(json.dumps(output["hole"]["gameplay"], indent=2) + "\n")
     (hole_dir / "surface-map.json").write_text(json.dumps(output["hole"]["surfaceMap"], indent=2) + "\n")
+    (hole_dir / "terrain-debug.json").write_text(json.dumps(terrain_debug_payload(terrain_mesh), separators=(",", ":")) + "\n")
     (hole_dir / "collision.json").write_text(json.dumps(output["hole"]["collision"], indent=2) + "\n")
     (hole_dir / "validation.json").write_text(json.dumps(output["hole"]["validation"], indent=2) + "\n")
     write_terrain_glb(hole_dir / "terrain.glb", terrain_mesh)
@@ -341,3 +343,21 @@ def write_package(output_dir: Path, output: dict[str, Any]) -> None:
 def source_path_fingerprint(source: dict[str, Any]) -> str:
     payload = json.dumps(source, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+
+
+def terrain_debug_payload(mesh: TerrainMesh) -> dict[str, Any]:
+    return {
+        "schema": "golfin.terrain-debug.v0",
+        "units": "metres",
+        "bounds": mesh.bounds,
+        "stats": mesh.stats,
+        "vertices": mesh.vertices,
+        "normals": mesh.normals,
+        "triangles": [
+            {
+                "indices": [a, b, c],
+                "surface": surface,
+            }
+            for a, b, c, surface in mesh.triangles
+        ],
+    }
