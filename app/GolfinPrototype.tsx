@@ -71,6 +71,11 @@ type SurfaceEmbossRule = {
   shade: number;
 };
 
+type CompiledHoleRender = {
+  scale: number;
+  material: HTMLCanvasElement;
+};
+
 type CourseData = {
   name: string;
   ref: string;
@@ -664,6 +669,8 @@ function colorString(color: [number, number, number], alpha = 1) {
 
 const grassPatternCache = new Map<string, CanvasPattern>();
 const textureImageCache = new Map<string, HTMLImageElement>();
+let compiledHoleRender: CompiledHoleRender | null = null;
+const compiledHoleScale = 2;
 
 function textureImage(src: string) {
   const cached = textureImageCache.get(src);
@@ -848,6 +855,140 @@ function worldGrassPattern(
   const spec = grassTextureSpecs[type];
   setPatternWorldTransform(pattern, sx, sy, scale, spec.tileWorldSize / spec.tileSize, offsetX, offsetY);
   return pattern;
+}
+
+function grassTexturesReady() {
+  return Object.values(grassTextureSpecs).every((spec) =>
+    imageReady(textureImage(spec.albedoSrc)) && imageReady(textureImage(spec.heightSrc))
+  );
+}
+
+function createWorldCanvas(scale: number) {
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.ceil(worldWidth * scale);
+  canvas.height = Math.ceil(worldHeight * scale);
+
+  return canvas;
+}
+
+function drawWorldPatternFill(
+  ctx: CanvasRenderingContext2D,
+  type: Exclude<Surface["name"], "bunker">,
+  scale: number,
+) {
+  const sx = (value: number) => value * scale;
+  const sy = (value: number) => value * scale;
+
+  ctx.fillStyle = worldGrassPattern(ctx, type, sx, sy, scale) ?? materials[type].color;
+  ctx.fillRect(0, 0, worldWidth * scale, worldHeight * scale);
+}
+
+function createSurfaceMask(
+  scale: number,
+  paint: (ctx: CanvasRenderingContext2D, sx: (value: number) => number, sy: (value: number) => number) => void,
+) {
+  const mask = createWorldCanvas(scale);
+  const maskCtx = mask.getContext("2d");
+  if (!maskCtx) {
+    return null;
+  }
+
+  const sx = (value: number) => value * scale;
+  const sy = (value: number) => value * scale;
+  paint(maskCtx, sx, sy);
+
+  return mask;
+}
+
+function paintMaskedGrassLayer(
+  targetCtx: CanvasRenderingContext2D,
+  type: Exclude<Surface["name"], "bunker">,
+  mask: HTMLCanvasElement,
+  scale: number,
+) {
+  const layer = createWorldCanvas(scale);
+  const layerCtx = layer.getContext("2d");
+  if (!layerCtx) {
+    return;
+  }
+
+  drawWorldPatternFill(layerCtx, type, scale);
+  layerCtx.globalCompositeOperation = "destination-in";
+  layerCtx.drawImage(mask, 0, 0);
+  targetCtx.drawImage(layer, 0, 0);
+}
+
+function makeHoleMaterialRender(scale: number) {
+  const material = createWorldCanvas(scale);
+  const materialCtx = material.getContext("2d");
+  if (!materialCtx) {
+    return null;
+  }
+
+  const sx = (value: number) => value * scale;
+  const sy = (value: number) => value * scale;
+
+  drawWorldPatternFill(materialCtx, "heavy", scale);
+
+  const roughMask = createSurfaceMask(scale, (maskCtx, maskSx, maskSy) => {
+    maskCtx.lineJoin = "round";
+    maskCtx.lineCap = "round";
+    maskCtx.strokeStyle = "#fff";
+    maskCtx.lineWidth = roughCollarWidth * 1.9 * scale;
+    for (const surface of course.surfaces) {
+      traceSurface(maskCtx, surface, maskSx, maskSy);
+      maskCtx.stroke();
+    }
+  });
+
+  if (roughMask) {
+    paintMaskedGrassLayer(materialCtx, "rough", roughMask, scale);
+  }
+
+  const drawOrder: Array<Exclude<Surface["name"], "bunker" | "heavy">> = ["fairway", "tee", "green"];
+  for (const type of drawOrder) {
+    const mask = createSurfaceMask(scale, (maskCtx, maskSx, maskSy) => {
+      maskCtx.fillStyle = "#fff";
+      for (const surface of course.surfaces.filter((item) => item.type === type)) {
+        traceSurface(maskCtx, surface, maskSx, maskSy);
+        maskCtx.fill();
+      }
+    });
+
+    if (mask) {
+      paintMaskedGrassLayer(materialCtx, type, mask, scale);
+    }
+  }
+
+  for (const surface of course.surfaces.filter((item) => item.type !== "bunker")) {
+    drawSurfaceEmboss(materialCtx, surface, sx, sy, scale);
+  }
+
+  drawSurfaceLight(materialCtx, sx, sy, scale, 0.58);
+
+  return material;
+}
+
+function getCompiledHoleRender() {
+  if (compiledHoleRender) {
+    return compiledHoleRender;
+  }
+
+  if (!grassTexturesReady()) {
+    return null;
+  }
+
+  const material = makeHoleMaterialRender(compiledHoleScale);
+  if (!material) {
+    return null;
+  }
+
+  compiledHoleRender = {
+    scale: compiledHoleScale,
+    material,
+  };
+
+  return compiledHoleRender;
 }
 
 function speed(ball: BallState) {
@@ -1729,6 +1870,19 @@ function drawAtmosphere(ctx: CanvasRenderingContext2D, width: number, height: nu
   ctx.fillRect(0, 0, width, height);
 }
 
+function drawCompiledTerrain(
+  ctx: CanvasRenderingContext2D,
+  sx: (value: number) => number,
+  sy: (value: number) => number,
+  scale: number,
+  compiled: CompiledHoleRender,
+) {
+  ctx.save();
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(compiled.material, sx(0), sy(0), worldWidth * scale, worldHeight * scale);
+  ctx.restore();
+}
+
 function drawGrass(
   ctx: CanvasRenderingContext2D,
   sx: (value: number) => number,
@@ -1738,6 +1892,29 @@ function drawGrass(
   scale: number,
   timestamp: number,
 ) {
+  const compiled = getCompiledHoleRender();
+
+  if (compiled) {
+    drawCompiledTerrain(ctx, sx, sy, scale, compiled);
+
+    if (renderRules.drawWater) {
+      drawWater(ctx, sx, sy, scale);
+    }
+    if (renderRules.drawGrassEdges) {
+      drawLiveGrassEdges(ctx, sx, sy, scale, timestamp);
+    }
+    if (renderRules.drawWindSheen) {
+      drawWindGrassSheen(ctx, sx, sy, scale, timestamp);
+    }
+    if (renderRules.drawScenery) {
+      drawWaterEdgeDetails(ctx, sx, sy, scale);
+      drawTrees(ctx, sx, sy, scale);
+    }
+    drawAtmosphere(ctx, width, height);
+    drawPin(ctx, sx, sy, scale);
+    return;
+  }
+
   drawTerrainBase(ctx, sx, sy, width, height, scale);
 
   if (renderRules.drawWater) {
