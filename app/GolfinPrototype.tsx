@@ -1219,6 +1219,10 @@ export function GolfinPrototype() {
       camera.targetX = course.pin[0];
       camera.targetY = course.pin[1];
       camera.targetZoom = Math.max(detailZoom * 1.1, 2.15);
+    } else if (currentHoleState === "celebrating" || currentHoleState === "complete") {
+      camera.targetX = worldWidth / 2;
+      camera.targetY = worldHeight / 2;
+      camera.targetZoom = overviewZoom;
     } else if (movingRef.current) {
       camera.targetX = clamp(ball.x + ball.vx * 0.1, 80, worldWidth - 80);
       camera.targetY = clamp(ball.y + ball.vy * 0.1, 80, worldHeight - 80);
