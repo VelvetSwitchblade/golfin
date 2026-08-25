@@ -1,0 +1,19 @@
+{
+  "source": "Environment Agency LIDAR Composite DTM 1m",
+  "provider": "Environment Agency",
+  "sourceId": "13787b9a-26a4-4775-8523-806d13af58fc__Lidar_Composite_Elevation_DTM_1m:94ad2aa63bd522b3",
+  "course": "goodwood-downs-1",
+  "format": "WCS text/plain resampled to local ESRI ASCII grid",
+  "crs": "EPSG:27700",
+  "sourceCellSizeMetres": 1,
+  "localCellSizeMetres": 1,
+  "requestBounds": {
+    "minE": 488185,
+    "minN": 109127,
+    "maxE": 488301,
+    "maxN": 109371
+  },
+  "endpoint": "https://environment.data.gov.uk/geoservices/datasets/13787b9a-26a4-4775-8523-806d13af58fc/wcs",
+  "coverageId": "13787b9a-26a4-4775-8523-806d13af58fc__Lidar_Composite_Elevation_DTM_1m",
+  "licence": "Open Government Licence"
+}

@@ -209,7 +209,7 @@ def build_hole_package(course: CourseModel, build_id: str, dtm: DTMGrid) -> dict
             "holes": [{"id": hole.id, "number": hole.number, "par": hole.par, "yards": hole.yards}],
             "sourceVersions": course.source_versions,
             "elevation": dtm.metadata(),
-            "attributions": course.attributions,
+            "attributions": package_attributions(course, dtm),
             "build": build_id,
         },
         "hole": {
@@ -327,6 +327,15 @@ def collision_kind(surface: SurfaceId) -> str:
     if surface == "bunker":
         return "terrain-depression-placeholder"
     return "surface-polygon"
+
+
+def package_attributions(course: CourseModel, dtm: DTMGrid) -> list[str]:
+    attributions = list(course.attributions)
+    if "Environment Agency" in dtm.source:
+        attributions.append(
+            "Elevation data: \u00a9 Environment Agency copyright and/or database right 2022. Licensed under the Open Government Licence."
+        )
+    return list(dict.fromkeys(attributions))
 
 
 def write_package(output_dir: Path, output: dict[str, Any]) -> None:

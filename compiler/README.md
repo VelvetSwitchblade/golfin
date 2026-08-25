@@ -42,4 +42,13 @@ The current compiler exports:
 - `materials.json`: biome material metadata and KTX2 compression status
 - `validation.json`: mapping/elevation/mesh QA checks
 
-The checked-in DTM fixture is deliberately coarse. It proves the ingestion and mesh pipeline, but it is not high-fidelity LiDAR.
+The checked-in Goodwood Downs DTM fixture is generated from the Environment Agency LIDAR Composite DTM 1m WCS. It gives the compiler a real elevation source while the wider ingestion pipeline is still being built out.
+
+## Real Elevation Fixture
+
+```bash
+npm run fetch:dtm:goodwood-downs
+npm run compile:course
+```
+
+The fetch step requests the Environment Agency LIDAR Composite DTM 1m WCS for the current Goodwood Downs hole footprint, resamples it into the compiler's local metre coordinate space, and writes `compiler/fixtures/goodwood-downs-1-dtm.asc`.

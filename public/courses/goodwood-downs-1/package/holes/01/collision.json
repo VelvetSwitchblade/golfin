@@ -5,13 +5,13 @@
     "kind": "adaptive-heightfield-mesh",
     "mesh": "collision.glb",
     "elevationSource": {
-      "source": "dtm",
-      "sourceId": "fb05c22e5b413da2",
+      "source": "Environment Agency LIDAR Composite DTM 1m",
+      "sourceId": "13787b9a-26a4-4775-8523-806d13af58fc__Lidar_Composite_Elevation_DTM_1m:94ad2aa63bd522b3",
       "format": "esri-ascii-grid",
-      "width": 9,
-      "height": 13,
-      "cellSizeMetres": 40.0,
-      "fidelity": 18
+      "width": 72,
+      "height": 221,
+      "cellSizeMetres": 1.0,
+      "fidelity": 94
     },
     "note": "Terrain/collision mesh is generated from the DTM adapter and semantic surface map."
   },

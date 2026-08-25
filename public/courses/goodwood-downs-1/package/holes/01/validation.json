@@ -1,12 +1,12 @@
 {
   "approved": true,
-  "premiumReady": false,
+  "premiumReady": true,
   "mappingFidelity": 98,
-  "elevationFidelity": 18,
+  "elevationFidelity": 94,
   "elevationStatus": "connected",
   "terrainMesh": {
-    "vertices": 4116,
-    "triangles": 7466,
+    "vertices": 8504,
+    "triangles": 14084,
     "baseCellsX": 96,
     "baseCellsY": 144,
     "adaptive": 1

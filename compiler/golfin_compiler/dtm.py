@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -88,9 +89,18 @@ def read_ascii_grid(path: Path) -> DTMGrid:
     if len(values) != width * height:
         raise ValueError(f"{path} contains {len(values)} cells, expected {width * height}")
 
+    fingerprint = file_fingerprint(path)
+    source = "dtm"
+    source_id = fingerprint
+    metadata_path = path.with_suffix(".metadata.json")
+    if metadata_path.exists():
+        metadata = json.loads(metadata_path.read_text())
+        source = metadata.get("source", source)
+        source_id = metadata.get("sourceId", source_id).replace("{sha256}", fingerprint)
+
     return DTMGrid(
-        source="dtm",
-        source_id=file_fingerprint(path),
+        source=source,
+        source_id=source_id,
         width=width,
         height=height,
         x_origin=x_origin,

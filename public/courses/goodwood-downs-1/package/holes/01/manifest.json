@@ -1,7 +1,7 @@
 {
   "schema": "golfin.hole-package.v0",
   "compiler": "0.1.0",
-  "build": "9ec0b3f2c379666c",
+  "build": "ed652347d30b72df",
   "immutable": true,
   "sourcePolicy": "authoritative-geometry-procedural-rendering",
   "bounds": {

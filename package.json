@@ -13,6 +13,7 @@
     "test:compiler": "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=compiler python3 -m unittest discover -s compiler/tests",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "compile:hole": "node scripts/compile-hole.mjs",
+    "fetch:dtm:goodwood-downs": "node scripts/fetch-goodwood-downs-dtm.mjs",
     "compile:course": "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=compiler python3 -m golfin_compiler.cli compile-goodwood",
     "db:generate": "drizzle-kit generate"
   },
