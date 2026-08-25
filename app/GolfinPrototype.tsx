@@ -700,7 +700,7 @@ function colorString(color: [number, number, number], alpha = 1) {
 const grassPatternCache = new Map<string, CanvasPattern>();
 const textureImageCache = new Map<string, HTMLImageElement>();
 const courseAssetBase = "/courses/goodwood-park-1";
-const terrainPlateSource = `${courseAssetBase}/aaa-terrain-plate.png`;
+const terrainPlateSource = `${courseAssetBase}/aaa-terrain-plate.png?v=552049e2`;
 const terrainAssetSources = {
   normal: `${courseAssetBase}/normal.png`,
   masks: `${courseAssetBase}/masks.png`,
@@ -980,31 +980,17 @@ function terrainAssetsReady() {
   return Object.values(terrainAssetSources).every((src) => imageReady(terrainImage(src)));
 }
 
-function renderTerrainPlate(
-  canvas: HTMLCanvasElement | null,
+function drawTerrainPlate(
+  ctx: CanvasRenderingContext2D,
   camera: CameraState,
   width: number,
   height: number,
-  dpr: number,
 ) {
-  if (!canvas) {
-    return false;
-  }
-
   const plate = terrainImage(terrainPlateSource);
   if (!imageReady(plate)) {
     return false;
   }
 
-  canvas.width = Math.max(1, Math.round(width * dpr));
-  canvas.height = Math.max(1, Math.round(height * dpr));
-
-  const ctx = canvas.getContext("2d");
-  if (!ctx) {
-    return false;
-  }
-
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
   ctx.fillStyle = "#15290f";
@@ -2479,12 +2465,20 @@ export function GolfinPrototype() {
       currentHoleState === "sinking"
         ? clamp((timestamp - sinkStartedAtRef.current) / sinkDurationMs, 0, 1)
         : 0;
-    const terrainRendered =
-      renderTerrainPlate(terrainCanvasRef.current, camera, width, height, dpr) ||
-      renderTerrainWebGl(terrainCanvasRef.current, camera, width, height, dpr, timestamp);
 
     ctx.clearRect(0, 0, width, height);
-    if (terrainRendered) {
+    const plateRendered = drawTerrainPlate(ctx, camera, width, height);
+    if (plateRendered && terrainCanvasRef.current) {
+      terrainCanvasRef.current.style.opacity = "0";
+    } else if (terrainCanvasRef.current) {
+      terrainCanvasRef.current.style.opacity = "1";
+    }
+    const terrainRendered =
+      plateRendered || renderTerrainWebGl(terrainCanvasRef.current, camera, width, height, dpr, timestamp);
+
+    if (plateRendered) {
+      drawPin(ctx, sx, sy, camera.zoom);
+    } else if (terrainRendered) {
       drawAtmosphere(ctx, width, height);
       drawPin(ctx, sx, sy, camera.zoom);
     } else {
