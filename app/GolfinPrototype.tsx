@@ -72,7 +72,6 @@ type SurfaceEmbossRule = {
 };
 
 type TerrainTextureSet = {
-  base: WebGLTexture;
   normal: WebGLTexture;
   masks: WebGLTexture;
   shadow: WebGLTexture;
@@ -85,7 +84,6 @@ type TerrainWebGlState = {
   positionBuffer: WebGLBuffer;
   textures: TerrainTextureSet;
   uniforms: {
-    base: WebGLUniformLocation | null;
     normal: WebGLUniformLocation | null;
     masks: WebGLUniformLocation | null;
     shadow: WebGLUniformLocation | null;
@@ -693,7 +691,6 @@ const grassPatternCache = new Map<string, CanvasPattern>();
 const textureImageCache = new Map<string, HTMLImageElement>();
 const courseAssetBase = "/courses/goodwood-park-1";
 const terrainAssetSources = {
-  base: `${courseAssetBase}/terrain-base.png`,
   normal: `${courseAssetBase}/normal.png`,
   masks: `${courseAssetBase}/masks.png`,
   shadow: `${courseAssetBase}/shadow.png`,
@@ -985,7 +982,6 @@ function createTerrainWebGlState(canvas: HTMLCanvasElement) {
   const fragmentSource = `
     precision mediump float;
 
-    uniform sampler2D u_base;
     uniform sampler2D u_normal;
     uniform sampler2D u_masks;
     uniform sampler2D u_shadow;
@@ -1023,12 +1019,27 @@ function createTerrainWebGlState(canvas: HTMLCanvasElement) {
       return value;
     }
 
-    vec3 oobGrass(vec2 world) {
+    vec3 grassMaterial(vec2 world, vec3 baseColor, float grain, float stripeStrength, float bladeScale) {
       float large = fbm(world * 0.018);
-      float fine = fbm(world * 0.085 + 21.0);
-      float blade = sin(dot(world, vec2(0.62, -0.28)) * 0.9 + fine * 2.4);
-      vec3 base = vec3(0.13, 0.36, 0.17);
-      return base + (large - 0.5) * 0.09 + blade * 0.018;
+      float mid = fbm(world * 0.048 + 19.0);
+      float fine = fbm(world * 0.135 + 41.0);
+      float blade = sin(dot(world, vec2(0.54, -0.22)) * bladeScale + fine * 2.0);
+      float stripe = sin(dot(world, vec2(0.03, 0.004)) + fbm(world * 0.005 + 7.0) * 0.8);
+      return baseColor + (large - 0.5) * grain * 0.11 + (mid - 0.5) * grain * 0.055 + (fine - 0.5) * grain * 0.032 + blade * grain * 0.01 + stripe * stripeStrength;
+    }
+
+    vec3 waterMaterial(vec2 world, float time, vec2 wind) {
+      float rippleA = sin(dot(world, normalize(vec2(-wind.y, wind.x))) * 0.2 + time * 2.4);
+      float rippleB = sin(dot(world, normalize(wind + vec2(0.18, -0.12))) * 0.13 + time * 1.7);
+      float noiseValue = fbm(world * 0.04 + time * 0.04);
+      return vec3(0.04, 0.38, 0.5) + rippleA * 0.035 + rippleB * 0.022 + noiseValue * 0.045;
+    }
+
+    vec3 bunkerMaterial(vec2 world, float edge) {
+      float sand = fbm(world * 0.065 + 23.0);
+      float rake = sin(dot(world, vec2(0.48, 0.18)) + sand * 1.6);
+      vec3 base = vec3(0.76, 0.63, 0.38);
+      return base + (sand - 0.5) * 0.08 + rake * 0.018 + edge * 0.08;
     }
 
     void main() {
@@ -1040,20 +1051,32 @@ function createTerrainWebGlState(canvas: HTMLCanvasElement) {
       bool insideWorld = world.x >= 0.0 && world.y >= 0.0 && world.x <= u_worldSize.x && world.y <= u_worldSize.y;
       vec2 uv = vec2(world.x / u_worldSize.x, world.y / u_worldSize.y);
       vec4 masks = insideWorld ? texture2D(u_masks, uv) : vec4(0.0);
+      vec4 aux = insideWorld ? texture2D(u_shadow, uv) : vec4(0.88, 0.0, 0.0, 0.0);
       vec3 normal = insideWorld ? texture2D(u_normal, uv).rgb * 2.0 - 1.0 : vec3(0.0, 0.0, 1.0);
-      vec3 base = insideWorld ? texture2D(u_base, uv).rgb : oobGrass(world);
-      float shadow = insideWorld ? texture2D(u_shadow, uv).r : 0.88;
+      float rough = masks.r;
+      float fairway = masks.g;
+      float green = masks.b;
+      float bunker = masks.a;
+      float water = aux.g;
+      float tee = aux.b;
+      float edge = aux.a;
+      float feature = clamp(rough + fairway + green + bunker + water + tee, 0.0, 1.0);
+      normal = mix(vec3(0.0, 0.0, 1.0), normal, feature);
+      float shadow = mix(0.88, aux.r, feature);
       vec3 lightDir = normalize(vec3(-0.62, 0.78, 0.72));
       float terrainLight = clamp(dot(normal, lightDir), 0.0, 1.0);
-      float grassMotion = sin(dot(world, normalize(u_wind)) * 0.08 + u_time * 1.2) * 0.012;
-      float water = masks.a;
-      float ripple = sin(dot(world, normalize(u_wind.yx * vec2(-1.0, 1.0))) * 0.16 + u_time * 2.6);
-      vec3 waterTint = vec3(0.06, 0.42, 0.55) + ripple * 0.035;
-      vec3 color = mix(base, waterTint, water * 0.45);
+      float grassMotion = sin(dot(world, normalize(u_wind)) * 0.09 + u_time * 1.15) * 0.008;
+      vec3 color = grassMaterial(world, vec3(0.13, 0.36, 0.17), 1.0, 0.0, 0.58);
+      color = mix(color, grassMaterial(world, vec3(0.19, 0.47, 0.2), 0.82, 0.004, 0.52), rough);
+      color = mix(color, grassMaterial(world, vec3(0.43, 0.66, 0.23), 0.52, 0.028, 0.38), fairway);
+      color = mix(color, grassMaterial(world, vec3(0.47, 0.72, 0.28), 0.38, 0.006, 0.3), tee);
+      color = mix(color, grassMaterial(world, vec3(0.54, 0.78, 0.34), 0.3, 0.005, 0.24), green);
+      color = mix(color, bunkerMaterial(world, edge), bunker);
+      color = mix(color, waterMaterial(world, u_time, u_wind), water);
       color *= 0.78 + terrainLight * 0.26;
       color *= 0.76 + shadow * 0.24;
       color += grassMotion * (1.0 - water);
-      color += max(0.0, ripple) * water * 0.08;
+      color += edge * vec3(0.018, 0.016, 0.008);
       gl_FragColor = vec4(color, 1.0);
     }
   `;
@@ -1064,11 +1087,10 @@ function createTerrainWebGlState(canvas: HTMLCanvasElement) {
     return null;
   }
 
-  const base = createTerrainTexture(gl, terrainImage(terrainAssetSources.base));
   const normal = createTerrainTexture(gl, terrainImage(terrainAssetSources.normal));
   const masks = createTerrainTexture(gl, terrainImage(terrainAssetSources.masks));
   const shadow = createTerrainTexture(gl, terrainImage(terrainAssetSources.shadow));
-  if (!base || !normal || !masks || !shadow) {
+  if (!normal || !masks || !shadow) {
     return null;
   }
 
@@ -1080,9 +1102,8 @@ function createTerrainWebGlState(canvas: HTMLCanvasElement) {
     gl,
     program,
     positionBuffer,
-    textures: { base, normal, masks, shadow },
+    textures: { normal, masks, shadow },
     uniforms: {
-      base: gl.getUniformLocation(program, "u_base"),
       normal: gl.getUniformLocation(program, "u_normal"),
       masks: gl.getUniformLocation(program, "u_masks"),
       shadow: gl.getUniformLocation(program, "u_shadow"),
@@ -1130,7 +1151,6 @@ function renderTerrainWebGl(
   gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
 
   const textureEntries: Array<[WebGLTexture, WebGLUniformLocation | null]> = [
-    [textures.base, uniforms.base],
     [textures.normal, uniforms.normal],
     [textures.masks, uniforms.masks],
     [textures.shadow, uniforms.shadow],

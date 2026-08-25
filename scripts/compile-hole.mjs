@@ -296,16 +296,16 @@ function renderAssets() {
         fbm(x * 0.045, y * 0.045, 90, 5) * 0.12;
       heightField[index] = elevation;
 
-      masks[out] = Math.round(mask.fairway * 255);
-      masks[out + 1] = Math.round(mask.green * 255);
-      masks[out + 2] = Math.round(mask.bunker * 255);
-      masks[out + 3] = Math.round(mask.water * 255);
+      masks[out] = Math.round(mask.rough * 255);
+      masks[out + 1] = Math.round(mask.fairway * 255);
+      masks[out + 2] = Math.round(mask.green * 255);
+      masks[out + 3] = Math.round(mask.bunker * 255);
 
       const shade = clamp(225 + mask.bunkerEdge * 22 + mask.waterEdge * 18 - mask.water * 12, 0, 255);
       shadow[out] = shade;
-      shadow[out + 1] = shade;
-      shadow[out + 2] = shade;
-      shadow[out + 3] = 255;
+      shadow[out + 1] = Math.round(mask.water * 255);
+      shadow[out + 2] = Math.round(mask.tee * 255);
+      shadow[out + 3] = Math.round(Math.max(mask.waterEdge, mask.bunkerEdge) * 255);
     }
   }
 
