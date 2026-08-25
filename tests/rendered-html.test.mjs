@@ -53,6 +53,11 @@ test("compiled Goodwood hole assets are present", async () => {
     access("public/courses/goodwood-park-1/package/holes/01/manifest.json"),
     access("public/courses/goodwood-park-1/package/holes/01/gameplay.json"),
     access("public/courses/goodwood-park-1/package/holes/01/surface-map.json"),
+    access("public/courses/goodwood-park-1/package/holes/01/surface-id.png"),
+    access("public/courses/goodwood-park-1/package/holes/01/surface.r8"),
+    access("public/courses/goodwood-park-1/package/holes/01/materials.json"),
+    access("public/courses/goodwood-park-1/package/holes/01/terrain.glb"),
+    access("public/courses/goodwood-park-1/package/holes/01/collision.glb"),
     access("public/courses/goodwood-park-1/package/holes/01/collision.json"),
     access("public/courses/goodwood-park-1/package/holes/01/validation.json"),
   ]);

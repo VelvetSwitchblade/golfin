@@ -1,7 +1,7 @@
 {
   "schema": "golfin.hole-package.v0",
   "compiler": "0.1.0",
-  "build": "47fb16eb7e072f9b",
+  "build": "26068dc170c3948a",
   "immutable": true,
   "sourcePolicy": "authoritative-geometry-procedural-rendering",
   "bounds": {
@@ -11,9 +11,19 @@
     "maxY": 423.469
   },
   "assets": {
+    "terrainMesh": "terrain.glb",
+    "collisionMesh": "collision.glb",
     "surfaceMap": "surface-map.json",
+    "surfaceTexture": "surface-id.png",
+    "surfaceTextureRaw": "surface.r8",
+    "materials": "materials.json",
     "gameplay": "gameplay.json",
     "collision": "collision.json",
     "validation": "validation.json"
+  },
+  "budgets": {
+    "terrainTriangles": 300000,
+    "initialCriticalDownloadMB": 10,
+    "completeHoleMB": 30
   }
 }

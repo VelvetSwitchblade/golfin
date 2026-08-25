@@ -69,6 +69,8 @@ The current milestone is intentionally small:
 - emit a deterministic manifest and validation report
 - export a compact surface classification map
 - export gameplay/collision metadata from the same surface IDs
+- ingest a DTM raster adapter and generate adaptive `terrain.glb` / `collision.glb`
+- export material maps and a KTX2 compressor hook
 - leave the existing browser prototype loading compiled assets from `public/courses/goodwood-park-1/`
 
 The next milestone should replace the transitional legacy source with a real OSM ingestion stage and add an inspector view with `RAW OSM`, `SEMANTIC`, `TERRAIN`, `MATERIAL`, `VEGETATION`, `COLLISION`, and `FINAL` modes.

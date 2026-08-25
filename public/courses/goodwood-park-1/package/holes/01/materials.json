@@ -1,0 +1,96 @@
+{
+  "schema": "golfin.materials.v0",
+  "surfaceTexture": "surface-id.png",
+  "surfaceTextureRaw": "surface.r8",
+  "ktx2": {
+    "status": "pending-compressor",
+    "tool": "toktx",
+    "note": "Install KTX-Software to emit .ktx2 files from the exported material maps."
+  },
+  "materials": {
+    "out_of_bounds": {
+      "id": 0,
+      "albedo": [
+        26,
+        72,
+        31,
+        255
+      ],
+      "normal": "procedural",
+      "roughness": 1.0,
+      "source": "biome-rule"
+    },
+    "rough": {
+      "id": 1,
+      "albedo": [
+        52,
+        112,
+        45,
+        255
+      ],
+      "normal": "procedural",
+      "roughness": 1.0,
+      "source": "biome-rule"
+    },
+    "fairway": {
+      "id": 2,
+      "albedo": [
+        122,
+        174,
+        56,
+        255
+      ],
+      "normal": "procedural",
+      "roughness": 1.0,
+      "source": "biome-rule"
+    },
+    "green": {
+      "id": 3,
+      "albedo": [
+        142,
+        205,
+        77,
+        255
+      ],
+      "normal": "procedural",
+      "roughness": 1.0,
+      "source": "biome-rule"
+    },
+    "tee": {
+      "id": 4,
+      "albedo": [
+        122,
+        184,
+        70,
+        255
+      ],
+      "normal": "procedural",
+      "roughness": 1.0,
+      "source": "biome-rule"
+    },
+    "bunker": {
+      "id": 5,
+      "albedo": [
+        200,
+        170,
+        104,
+        255
+      ],
+      "normal": "procedural",
+      "roughness": 1.0,
+      "source": "biome-rule"
+    },
+    "water": {
+      "id": 6,
+      "albedo": [
+        26,
+        119,
+        150,
+        255
+      ],
+      "normal": "procedural",
+      "roughness": 0.18,
+      "source": "biome-rule"
+    }
+  }
+}

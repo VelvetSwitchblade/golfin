@@ -14,11 +14,12 @@ def main() -> None:
     goodwood = subcommands.add_parser("compile-goodwood", help="Compile the current Goodwood prototype hole package")
     goodwood.add_argument("--source", default="public/courses/goodwood-park-1/hole.json", type=Path)
     goodwood.add_argument("--out", default="public/courses/goodwood-park-1/package", type=Path)
+    goodwood.add_argument("--dtm", default="compiler/fixtures/goodwood-park-1-dtm.asc", type=Path)
 
     args = parser.parse_args()
 
     if args.command == "compile-goodwood":
-        result = compile_legacy_goodwood(args.source, args.out)
+        result = compile_legacy_goodwood(args.source, args.out, args.dtm)
         print(json.dumps(result, indent=2))
 
 

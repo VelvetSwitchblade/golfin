@@ -1,8 +1,16 @@
 {
   "approved": true,
+  "premiumReady": false,
   "mappingFidelity": 98,
-  "elevationFidelity": 0,
-  "elevationStatus": "not-connected",
+  "elevationFidelity": 18,
+  "elevationStatus": "connected",
+  "terrainMesh": {
+    "vertices": 4005,
+    "triangles": 7220,
+    "baseCellsX": 96,
+    "baseCellsY": 144,
+    "adaptive": 1
+  },
   "checks": [
     {
       "name": "hole-centreline",
@@ -48,6 +56,24 @@
     },
     {
       "name": "sensible-yardage",
+      "status": "pass",
+      "mandatory": true,
+      "weight": 4
+    },
+    {
+      "name": "dtm-connected",
+      "status": "pass",
+      "mandatory": true,
+      "weight": 4
+    },
+    {
+      "name": "terrain-mesh-generated",
+      "status": "pass",
+      "mandatory": true,
+      "weight": 4
+    },
+    {
+      "name": "adaptive-mesh-generated",
       "status": "pass",
       "mandatory": true,
       "weight": 4

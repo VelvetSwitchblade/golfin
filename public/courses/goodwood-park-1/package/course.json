@@ -21,8 +21,17 @@
     "legacyPrototypeHole": "ecf3fa7c1b3ebe92",
     "compiler": "0.1.0"
   },
+  "elevation": {
+    "source": "dtm",
+    "sourceId": "fb05c22e5b413da2",
+    "format": "esri-ascii-grid",
+    "width": 9,
+    "height": 13,
+    "cellSizeMetres": 40.0,
+    "fidelity": 18
+  },
   "attributions": [
     "Map geometry derived from OpenStreetMap contributors where available."
   ],
-  "build": "47fb16eb7e072f9b"
+  "build": "26068dc170c3948a"
 }
