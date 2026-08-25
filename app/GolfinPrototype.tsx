@@ -1131,12 +1131,23 @@ function drawMaintainedRough(
   ctx.lineCap = "round";
 
   for (const surface of course.surfaces) {
-    traceSurface(ctx, surface, sx, sy);
-    ctx.strokeStyle = worldGrassPattern(ctx, "rough", sx, sy, scale) ?? rough.color;
-    ctx.lineWidth = roughCollarWidth * 2 * scale;
-    ctx.stroke();
+    const passes = [
+      { alpha: 0.2, width: roughCollarWidth * 2.55 },
+      { alpha: 0.36, width: roughCollarWidth * 2.2 },
+      { alpha: 0.56, width: roughCollarWidth * 1.78 },
+      { alpha: 0.76, width: roughCollarWidth * 1.28 },
+    ];
+
+    for (const pass of passes) {
+      traceSurface(ctx, surface, sx, sy);
+      ctx.globalAlpha = pass.alpha;
+      ctx.strokeStyle = worldGrassPattern(ctx, "rough", sx, sy, scale) ?? rough.color;
+      ctx.lineWidth = pass.width * scale;
+      ctx.stroke();
+    }
   }
 
+  ctx.globalAlpha = 1;
   ctx.restore();
 }
 
@@ -1150,12 +1161,6 @@ function drawSurfacePolygons(
   for (const type of drawOrder) {
     for (const surface of course.surfaces.filter((item) => item.type === type)) {
       paintSurfaceBase(ctx, surface, sx, sy, scale);
-
-      if (surface.type !== "rough") {
-        ctx.strokeStyle = "rgba(18, 55, 28, 0.18)";
-        ctx.lineWidth = 1.8;
-        ctx.stroke();
-      }
     }
   }
 }
@@ -1562,6 +1567,49 @@ function drawSurfaceTextures(
   }
 }
 
+function drawGrassTransitions(
+  ctx: CanvasRenderingContext2D,
+  sx: (value: number) => number,
+  sy: (value: number) => number,
+  scale: number,
+) {
+  const transitionSurfaces = course.surfaces.filter((surface) =>
+    surface.type === "fairway" || surface.type === "green" || surface.type === "tee"
+  );
+
+  ctx.save();
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+
+  for (const surface of transitionSurfaces) {
+    const edgeWidth = surface.type === "green" ? 22 : surface.type === "tee" ? 18 : 30;
+    const roughBleed = [
+      { alpha: 0.1, width: edgeWidth * 1.65 },
+      { alpha: 0.16, width: edgeWidth * 1.06 },
+      { alpha: 0.1, width: edgeWidth * 0.56 },
+    ];
+
+    for (const pass of roughBleed) {
+      traceSurface(ctx, surface, sx, sy);
+      ctx.globalAlpha = pass.alpha;
+      ctx.strokeStyle = worldGrassPattern(ctx, "rough", sx, sy, scale) ?? rough.color;
+      ctx.lineWidth = pass.width * scale;
+      ctx.stroke();
+    }
+
+    traceSurface(ctx, surface, sx, sy);
+    ctx.globalAlpha = surface.type === "green" ? 0.26 : 0.18;
+    ctx.strokeStyle =
+      worldGrassPattern(ctx, surface.type === "tee" ? "tee" : surface.type, sx, sy, scale) ??
+      materials[surface.type].color;
+    ctx.lineWidth = Math.max(1, edgeWidth * 0.34 * scale);
+    ctx.stroke();
+  }
+
+  ctx.globalAlpha = 1;
+  ctx.restore();
+}
+
 function drawTrees(
   ctx: CanvasRenderingContext2D,
   sx: (value: number) => number,
@@ -1676,6 +1724,7 @@ function drawGrass(
   drawMaintainedRough(ctx, sx, sy, scale);
   drawSurfacePolygons(ctx, sx, sy, scale);
   drawSurfaceTextures(ctx, sx, sy, scale);
+  drawGrassTransitions(ctx, sx, sy, scale);
   if (renderRules.drawGrassEdges) {
     drawLiveGrassEdges(ctx, sx, sy, scale, timestamp);
   }
