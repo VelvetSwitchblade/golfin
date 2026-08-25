@@ -52,6 +52,14 @@ type GrassTextureSpec = {
   tileSize: number;
 };
 
+type RenderRules = {
+  drawWater: boolean;
+  drawScenery: boolean;
+  useWaterPenalties: boolean;
+  windDirection: number;
+  windStrength: number;
+};
+
 type CourseData = {
   name: string;
   ref: string;
@@ -375,9 +383,13 @@ const celebrationDurationMs = 2600;
 const outOfBoundsDurationMs = 1450;
 const scorecardHoleYards = 389;
 const fixedSwingMph: SwingSpeed = 100;
-const showWaterLayer = false;
-const showSceneryLayer = false;
-const useWaterPenalties = false;
+const renderRules: RenderRules = {
+  drawWater: false,
+  drawScenery: false,
+  useWaterPenalties: false,
+  windDirection: -0.55,
+  windStrength: 0.38,
+};
 const sunVector = { x: -0.62, y: 0.78 };
 const clubDefinitions: ClubDefinition[] = [
   {
@@ -734,6 +746,48 @@ function createGrassPattern(ctx: CanvasRenderingContext2D, type: Exclude<Surface
   return pattern;
 }
 
+function setPatternWorldTransform(
+  pattern: CanvasPattern,
+  sx: (value: number) => number,
+  sy: (value: number) => number,
+  scale: number,
+  offsetX = 0,
+  offsetY = 0,
+) {
+  if (typeof pattern.setTransform !== "function") {
+    return;
+  }
+
+  pattern.setTransform(
+    new DOMMatrix([
+      scale,
+      0,
+      0,
+      scale,
+      sx(0) + offsetX * scale,
+      sy(0) + offsetY * scale,
+    ]),
+  );
+}
+
+function worldGrassPattern(
+  ctx: CanvasRenderingContext2D,
+  type: Exclude<Surface["name"], "bunker">,
+  sx: (value: number) => number,
+  sy: (value: number) => number,
+  scale: number,
+  offsetX = 0,
+  offsetY = 0,
+) {
+  const pattern = createGrassPattern(ctx, type);
+  if (!pattern) {
+    return null;
+  }
+
+  setPatternWorldTransform(pattern, sx, sy, scale, offsetX, offsetY);
+  return pattern;
+}
+
 function speed(ball: BallState) {
   return Math.hypot(ball.vx, ball.vy);
 }
@@ -748,7 +802,7 @@ function isOutOfBounds(ball: BallState) {
     ball.x > worldWidth - 28 ||
     ball.y < 34 ||
     ball.y > worldHeight - 34 ||
-    (useWaterPenalties && isInWater(ball))
+    (renderRules.useWaterPenalties && isInWater(ball))
   );
 }
 
@@ -1030,7 +1084,7 @@ function drawMaintainedRough(
 
   for (const surface of course.surfaces) {
     traceSurface(ctx, surface, sx, sy);
-    ctx.strokeStyle = createGrassPattern(ctx, "rough") ?? rough.color;
+    ctx.strokeStyle = worldGrassPattern(ctx, "rough", sx, sy, scale) ?? rough.color;
     ctx.lineWidth = roughCollarWidth * 2 * scale;
     ctx.stroke();
   }
@@ -1042,11 +1096,12 @@ function drawSurfacePolygons(
   ctx: CanvasRenderingContext2D,
   sx: (value: number) => number,
   sy: (value: number) => number,
+  scale: number,
 ) {
   const drawOrder: Surface["name"][] = ["rough", "fairway", "tee", "green"];
   for (const type of drawOrder) {
     for (const surface of course.surfaces.filter((item) => item.type === type)) {
-      paintSurfaceBase(ctx, surface, sx, sy);
+      paintSurfaceBase(ctx, surface, sx, sy, scale);
 
       if (surface.type !== "rough") {
         ctx.strokeStyle = "rgba(18, 55, 28, 0.18)";
@@ -1062,9 +1117,10 @@ function paintSurfaceBase(
   surface: CourseSurface,
   sx: (value: number) => number,
   sy: (value: number) => number,
+  scale: number,
 ) {
   const surfaceType = surface.type === "bunker" ? "rough" : surface.type;
-  ctx.fillStyle = createGrassPattern(ctx, surfaceType) ?? materials[surfaceType].color;
+  ctx.fillStyle = worldGrassPattern(ctx, surfaceType, sx, sy, scale) ?? materials[surfaceType].color;
   traceSurface(ctx, surface, sx, sy);
   ctx.fill();
 }
@@ -1134,7 +1190,7 @@ function drawTerrainBase(
   height: number,
   scale: number,
 ) {
-  ctx.fillStyle = createGrassPattern(ctx, "heavy") ?? "#1f5c32";
+  ctx.fillStyle = worldGrassPattern(ctx, "heavy", sx, sy, scale) ?? "#1f5c32";
   ctx.fillRect(0, 0, width, height);
 
   const sunWash = ctx.createLinearGradient(width * 0.82, 0, width * 0.08, height);
@@ -1186,6 +1242,103 @@ function drawSurfaceLight(
   light.addColorStop(1, `rgba(5, 29, 17, ${0.2 * strength})`);
   ctx.fillStyle = light;
   ctx.fillRect(sx(0), sy(0), worldWidth * scale, worldHeight * scale);
+}
+
+function drawLiveGrassEdges(
+  ctx: CanvasRenderingContext2D,
+  sx: (value: number) => number,
+  sy: (value: number) => number,
+  scale: number,
+  timestamp: number,
+) {
+  const edgeTypes: Surface["name"][] = ["fairway", "green", "tee"];
+  const windLean = Math.sin(timestamp * 0.0014) * renderRules.windStrength;
+
+  ctx.save();
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+
+  for (const surface of course.surfaces.filter((item) => edgeTypes.includes(item.type))) {
+    traceSurface(ctx, surface, sx, sy);
+    ctx.strokeStyle = "rgba(22, 73, 34, 0.2)";
+    ctx.lineWidth = Math.max(1, 3.4 * scale);
+    ctx.stroke();
+
+    const points = normalizedPolygon(surface.points);
+    for (let edgeIndex = 0; edgeIndex < points.length; edgeIndex += 1) {
+      const start = points[edgeIndex];
+      const end = points[(edgeIndex + 1) % points.length];
+      const dx = end[0] - start[0];
+      const dy = end[1] - start[1];
+      const edgeLength = Math.hypot(dx, dy);
+      if (edgeLength < 16) {
+        continue;
+      }
+
+      const count = Math.floor(edgeLength / 14);
+      const tangentX = dx / edgeLength;
+      const tangentY = dy / edgeLength;
+      const normalX = -tangentY;
+      const normalY = tangentX;
+
+      for (let i = 0; i < count; i += 1) {
+        const seed = surface.id * 0.031 + edgeIndex * 17.3 + i * 4.7;
+        if (seededNoise(seed) < 0.38) {
+          continue;
+        }
+
+        const t = (i + seededNoise(seed + 2.2)) / count;
+        const side = seededNoise(seed + 4.9) > 0.5 ? 1 : -1;
+        const length = 5 + seededNoise(seed + 7.1) * 13;
+        const baseX = start[0] + dx * t + normalX * side * (2 + seededNoise(seed + 9.1) * 4);
+        const baseY = start[1] + dy * t + normalY * side * (2 + seededNoise(seed + 9.1) * 4);
+        const leanX = normalX * side * length + tangentX * windLean * 9;
+        const leanY = normalY * side * length + tangentY * windLean * 9;
+
+        ctx.strokeStyle = seededNoise(seed + 11.4) > 0.55
+          ? "rgba(181, 220, 110, 0.2)"
+          : "rgba(13, 53, 27, 0.18)";
+        ctx.lineWidth = Math.max(0.45, 0.9 * scale);
+        ctx.beginPath();
+        ctx.moveTo(sx(baseX), sy(baseY));
+        ctx.lineTo(sx(baseX + leanX), sy(baseY + leanY));
+        ctx.stroke();
+      }
+    }
+  }
+
+  ctx.restore();
+}
+
+function drawWindGrassSheen(
+  ctx: CanvasRenderingContext2D,
+  sx: (value: number) => number,
+  sy: (value: number) => number,
+  scale: number,
+  timestamp: number,
+) {
+  const offset = (timestamp * 0.014 * renderRules.windStrength) % 220;
+  const sheenSurfaces = course.surfaces.filter((surface) => surface.type !== "bunker");
+
+  ctx.save();
+  for (const surface of sheenSurfaces) {
+    ctx.save();
+    traceSurface(ctx, surface, sx, sy);
+    ctx.clip();
+
+    ctx.strokeStyle = "rgba(235, 255, 178, 0.055)";
+    ctx.lineWidth = Math.max(8, 15 * scale);
+    for (let y = -220; y < worldHeight + 260; y += 220) {
+      const sweep = y + offset;
+      ctx.beginPath();
+      ctx.moveTo(sx(-80), sy(sweep));
+      ctx.lineTo(sx(worldWidth + 80), sy(sweep - 142));
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+  ctx.restore();
 }
 
 function drawWater(
@@ -1380,7 +1533,7 @@ function drawSurfaceTextures(
   for (const type of textureOrder) {
     for (const surface of course.surfaces.filter((item) => item.type === type)) {
       ctx.save();
-      paintSurfaceBase(ctx, surface, sx, sy);
+      paintSurfaceBase(ctx, surface, sx, sy, scale);
       clipSurface(ctx, surface, sx, sy);
       drawSurfaceLight(ctx, sx, sy, scale, 0.7);
 
@@ -1538,16 +1691,19 @@ function drawGrass(
   width: number,
   height: number,
   scale: number,
+  timestamp: number,
 ) {
   drawTerrainBase(ctx, sx, sy, width, height, scale);
 
-  if (showWaterLayer) {
+  if (renderRules.drawWater) {
     drawWater(ctx, sx, sy, scale);
   }
   drawMaintainedRough(ctx, sx, sy, scale);
-  drawSurfacePolygons(ctx, sx, sy);
+  drawSurfacePolygons(ctx, sx, sy, scale);
   drawSurfaceTextures(ctx, sx, sy, scale);
-  if (showSceneryLayer) {
+  drawLiveGrassEdges(ctx, sx, sy, scale, timestamp);
+  drawWindGrassSheen(ctx, sx, sy, scale, timestamp);
+  if (renderRules.drawScenery) {
     drawWaterEdgeDetails(ctx, sx, sy, scale);
     drawTrees(ctx, sx, sy, scale);
   }
@@ -1707,14 +1863,14 @@ function drawMiniMap(ctx: CanvasRenderingContext2D, width: number, height: numbe
   ctx.fill();
   ctx.clip();
 
-  ctx.fillStyle = createGrassPattern(ctx, "heavy") ?? heavy.color;
+  ctx.fillStyle = worldGrassPattern(ctx, "heavy", sx, sy, scale) ?? heavy.color;
   ctx.fillRect(left, top, mapWidth, mapHeight);
-  if (showWaterLayer) {
+  if (renderRules.drawWater) {
     drawWater(ctx, sx, sy, scale, "mini");
   }
   drawMaintainedRough(ctx, sx, sy, scale);
-  drawSurfacePolygons(ctx, sx, sy);
-  if (showSceneryLayer) {
+  drawSurfacePolygons(ctx, sx, sy, scale);
+  if (renderRules.drawScenery) {
     drawTrees(ctx, sx, sy, scale, "mini");
   }
   drawPin(ctx, sx, sy, scale);
@@ -1856,7 +2012,7 @@ export function GolfinPrototype() {
         ? clamp((timestamp - sinkStartedAtRef.current) / sinkDurationMs, 0, 1)
         : 0;
 
-    drawGrass(ctx, sx, sy, width, height, camera.zoom);
+    drawGrass(ctx, sx, sy, width, height, camera.zoom, timestamp);
     if (currentHoleState === "playing") {
       drawTrail(ctx, sx, sy, camera.zoom, trailRef.current);
       drawAimGhost(ctx, sx, sy, camera.zoom, ball, selectedClubRef.current);
@@ -1912,6 +2068,8 @@ export function GolfinPrototype() {
 
     if (airborne) {
       ball.vz -= gravity * dt;
+      ball.vx += Math.cos(renderRules.windDirection) * renderRules.windStrength * 12 * dt;
+      ball.vy += Math.sin(renderRules.windDirection) * renderRules.windStrength * 12 * dt;
       ball.vx *= 1 - 0.045 * dt;
       ball.vy *= 1 - 0.045 * dt;
     } else {
