@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import downsHoleSource from "../public/courses/goodwood-downs-1/hole.json";
+import downsHoleSource from "./course-data/goodwood-downs-1-hole.json";
 
 type BallState = {
   x: number;
@@ -73,9 +73,6 @@ type SurfaceEmbossRule = {
 };
 
 type TerrainTextureSet = {
-  normal: WebGLTexture;
-  masks: WebGLTexture;
-  shadow: WebGLTexture;
   objects: WebGLTexture;
   heavyGrass: WebGLTexture;
   roughGrass: WebGLTexture;
@@ -83,16 +80,51 @@ type TerrainTextureSet = {
   greenGrass: WebGLTexture;
 };
 
+type CompiledTerrainTriangle = {
+  indices: [number, number, number];
+  surface: "out_of_bounds" | "rough" | "fairway" | "green" | "tee" | "bunker" | "water";
+};
+
+type CompiledTerrainMesh = {
+  bounds: {
+    minX: number;
+    minY: number;
+    maxX: number;
+    maxY: number;
+  };
+  stats: {
+    vertices: number;
+    triangles: number;
+    baseCellsX: number;
+    baseCellsY: number;
+    adaptive: number;
+  };
+  vertices: Array<[number, number, number]>;
+  normals: Array<[number, number, number]>;
+  triangles: CompiledTerrainTriangle[];
+};
+
+type TerrainGpuMesh = {
+  buffer: WebGLBuffer;
+  vertexCount: number;
+  source: CompiledTerrainMesh;
+  heightMin: number;
+  heightMax: number;
+};
+
 type TerrainWebGlState = {
   canvas: HTMLCanvasElement;
   gl: WebGLRenderingContext;
   program: WebGLProgram;
-  positionBuffer: WebGLBuffer;
+  mesh: TerrainGpuMesh;
   textures: TerrainTextureSet;
+  attributes: {
+    world: number;
+    elevation: number;
+    normal: number;
+    surface: number;
+  };
   uniforms: {
-    normal: WebGLUniformLocation | null;
-    masks: WebGLUniformLocation | null;
-    shadow: WebGLUniformLocation | null;
     objects: WebGLUniformLocation | null;
     heavyGrass: WebGLUniformLocation | null;
     roughGrass: WebGLUniformLocation | null;
@@ -104,6 +136,8 @@ type TerrainWebGlState = {
     zoom: WebGLUniformLocation | null;
     time: WebGLUniformLocation | null;
     wind: WebGLUniformLocation | null;
+    metresToWorld: WebGLUniformLocation | null;
+    heightRange: WebGLUniformLocation | null;
   };
 };
 
@@ -504,10 +538,8 @@ function colorString(color: [number, number, number], alpha = 1) {
 const grassPatternCache = new Map<string, CanvasPattern>();
 const textureImageCache = new Map<string, HTMLImageElement>();
 const courseAssetBase = "/courses/goodwood-downs-1";
+const terrainDebugSrc = `${courseAssetBase}/package/holes/01/terrain-debug.json`;
 const terrainAssetSources = {
-  normal: `${courseAssetBase}/normal.png`,
-  masks: `${courseAssetBase}/masks.png`,
-  shadow: `${courseAssetBase}/shadow.png`,
   objects: `${courseAssetBase}/objects.png`,
   heavyGrass: grassTextureSpecs.heavy.albedoSrc,
   roughGrass: grassTextureSpecs.rough.albedoSrc,
@@ -783,7 +815,7 @@ function terrainAssetsReady() {
   return Object.values(terrainAssetSources).every((src) => imageReady(terrainImage(src)));
 }
 
-function createTerrainWebGlState(canvas: HTMLCanvasElement) {
+function createTerrainWebGlState(canvas: HTMLCanvasElement, mesh: CompiledTerrainMesh) {
   const gl = canvas.getContext("webgl", {
     alpha: false,
     antialias: false,
@@ -795,32 +827,46 @@ function createTerrainWebGlState(canvas: HTMLCanvasElement) {
   }
 
   const vertexSource = `
-    attribute vec2 a_position;
-    varying vec2 v_clip;
+    attribute vec2 a_world;
+    attribute float a_elevation;
+    attribute vec3 a_normal;
+    attribute float a_surface;
+    uniform vec2 u_viewport;
+    uniform vec2 u_camera;
+    uniform float u_zoom;
+    uniform float u_metresToWorld;
+    varying vec2 v_world;
+    varying float v_elevation;
+    varying vec3 v_normal;
+    varying float v_surface;
 
     void main() {
-      v_clip = a_position;
-      gl_Position = vec4(a_position, 0.0, 1.0);
+      vec2 world = a_world * u_metresToWorld;
+      vec2 pixel = (world - u_camera) * u_zoom + u_viewport * 0.5;
+      vec2 clip = vec2(pixel.x / u_viewport.x * 2.0 - 1.0, 1.0 - pixel.y / u_viewport.y * 2.0);
+      v_world = world;
+      v_elevation = a_elevation;
+      v_normal = normalize(a_normal);
+      v_surface = a_surface;
+      gl_Position = vec4(clip, 0.0, 1.0);
     }
   `;
   const fragmentSource = `
     precision mediump float;
 
-    uniform sampler2D u_normal;
-    uniform sampler2D u_masks;
-    uniform sampler2D u_shadow;
     uniform sampler2D u_objects;
     uniform sampler2D u_heavyGrass;
     uniform sampler2D u_roughGrass;
     uniform sampler2D u_fairwayGrass;
     uniform sampler2D u_greenGrass;
-    uniform vec2 u_viewport;
-    uniform vec2 u_camera;
     uniform vec2 u_worldSize;
-    uniform float u_zoom;
     uniform float u_time;
     uniform vec2 u_wind;
-    varying vec2 v_clip;
+    uniform vec2 u_heightRange;
+    varying vec2 v_world;
+    varying float v_elevation;
+    varying vec3 v_normal;
+    varying float v_surface;
 
     float hash(vec2 p) {
       return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
@@ -848,15 +894,6 @@ function createTerrainWebGlState(canvas: HTMLCanvasElement) {
       return value;
     }
 
-    vec3 grassMaterial(vec2 world, vec3 baseColor, float grain, float stripeStrength, float bladeScale) {
-      float large = fbm(world * 0.018);
-      float mid = fbm(world * 0.048 + 19.0);
-      float fine = fbm(world * 0.135 + 41.0);
-      float blade = sin(dot(world, vec2(0.54, -0.22)) * bladeScale + fine * 2.0);
-      float stripe = sin(dot(world, vec2(0.03, 0.004)) + fbm(world * 0.005 + 7.0) * 0.8);
-      return baseColor + (large - 0.5) * grain * 0.11 + (mid - 0.5) * grain * 0.055 + (fine - 0.5) * grain * 0.032 + blade * grain * 0.01 + stripe * stripeStrength;
-    }
-
     vec3 textureGrass(sampler2D source, vec2 world, vec3 tint, float tile, float strength, float stripeStrength) {
       vec2 uv = vec2(world.x / tile, world.y / tile);
       vec3 texel = texture2D(source, uv).rgb;
@@ -882,78 +919,69 @@ function createTerrainWebGlState(canvas: HTMLCanvasElement) {
       return base + (sand - 0.5) * 0.08 + rake * 0.018 + edge * 0.08;
     }
 
+    float surfaceIs(float id) {
+      return 1.0 - step(0.5, abs(v_surface - id));
+    }
+
     void main() {
-      vec2 pixel = vec2(
-        (v_clip.x * 0.5 + 0.5) * u_viewport.x,
-        (1.0 - (v_clip.y * 0.5 + 0.5)) * u_viewport.y
-      );
-      vec2 world = u_camera + (pixel - u_viewport * 0.5) / u_zoom;
-      bool insideWorld = world.x >= 0.0 && world.y >= 0.0 && world.x <= u_worldSize.x && world.y <= u_worldSize.y;
+      vec2 world = v_world;
       vec2 uv = vec2(world.x / u_worldSize.x, world.y / u_worldSize.y);
-      vec4 masks = insideWorld ? texture2D(u_masks, uv) : vec4(0.0);
-      vec4 aux = insideWorld ? texture2D(u_shadow, uv) : vec4(0.88, 0.0, 0.0, 0.0);
-      vec3 normal = insideWorld ? texture2D(u_normal, uv).rgb * 2.0 - 1.0 : vec3(0.0, 0.0, 1.0);
-      float rough = masks.r;
-      float fairway = masks.g;
-      float green = masks.b;
-      float bunker = masks.a;
-      float water = aux.g;
-      float tee = aux.b;
-      float edge = aux.a;
-      float feature = clamp(rough + fairway + green + bunker + water + tee, 0.0, 1.0);
-      normal = mix(vec3(0.0, 0.0, 1.0), normal, feature);
-      float shadow = mix(0.88, aux.r, feature);
-      vec3 lightDir = normalize(vec3(-0.62, 0.78, 0.72));
+      float rough = surfaceIs(1.0);
+      float fairway = surfaceIs(2.0);
+      float green = surfaceIs(3.0);
+      float tee = surfaceIs(4.0);
+      float bunker = surfaceIs(5.0);
+      float water = surfaceIs(6.0);
+      float normalizedHeight = clamp((v_elevation - u_heightRange.x) / max(0.001, u_heightRange.y - u_heightRange.x), 0.0, 1.0);
+      vec3 normal = normalize(vec3(v_normal.x, v_normal.y, -v_normal.z));
+      vec3 lightDir = normalize(vec3(-0.52, 0.84, 0.36));
       float terrainLight = clamp(dot(normal, lightDir), 0.0, 1.0);
+      float slopeShade = clamp(normal.y, 0.0, 1.0);
       float grassMotion = sin(dot(world, normalize(u_wind)) * 0.09 + u_time * 1.15) * 0.008;
       vec3 color = textureGrass(u_heavyGrass, world, vec3(0.12, 0.34, 0.15), 82.0, 0.44, 0.0);
       color = mix(color, textureGrass(u_roughGrass, world, vec3(0.18, 0.46, 0.19), 70.0, 0.52, 0.004), rough);
       color = mix(color, textureGrass(u_fairwayGrass, world, vec3(0.43, 0.65, 0.22), 58.0, 0.45, 0.03), fairway);
       color = mix(color, textureGrass(u_fairwayGrass, world, vec3(0.46, 0.69, 0.28), 48.0, 0.4, 0.008), tee);
       color = mix(color, textureGrass(u_greenGrass, world, vec3(0.53, 0.76, 0.34), 42.0, 0.34, 0.004), green);
-      color = mix(color, bunkerMaterial(world, edge), bunker);
+      color = mix(color, bunkerMaterial(world, 0.35 + (1.0 - slopeShade) * 0.65), bunker);
       color = mix(color, waterMaterial(world, u_time, u_wind), water);
-      color *= 0.78 + terrainLight * 0.26;
-      color *= 0.76 + shadow * 0.24;
+      color *= 0.62 + terrainLight * 0.35 + slopeShade * 0.13;
+      color *= 0.9 + normalizedHeight * 0.12;
       color += grassMotion * (1.0 - water);
-      color += edge * vec3(0.018, 0.016, 0.008);
-      vec4 objects = insideWorld ? texture2D(u_objects, uv) : vec4(0.0);
+      vec4 objects = texture2D(u_objects, uv);
       color = mix(color, objects.rgb, objects.a);
       gl_FragColor = vec4(color, 1.0);
     }
   `;
 
   const program = createProgram(gl, vertexSource, fragmentSource);
-  const positionBuffer = gl.createBuffer();
-  if (!program || !positionBuffer) {
+  const gpuMesh = createTerrainGpuMesh(gl, mesh);
+  if (!program || !gpuMesh) {
     return null;
   }
 
-  const normal = createTerrainTexture(gl, terrainImage(terrainAssetSources.normal));
-  const masks = createTerrainTexture(gl, terrainImage(terrainAssetSources.masks));
-  const shadow = createTerrainTexture(gl, terrainImage(terrainAssetSources.shadow));
   const objects = createTerrainTexture(gl, terrainImage(terrainAssetSources.objects));
   const heavyGrass = createTerrainTexture(gl, terrainImage(terrainAssetSources.heavyGrass), true);
   const roughGrass = createTerrainTexture(gl, terrainImage(terrainAssetSources.roughGrass), true);
   const fairwayGrass = createTerrainTexture(gl, terrainImage(terrainAssetSources.fairwayGrass), true);
   const greenGrass = createTerrainTexture(gl, terrainImage(terrainAssetSources.greenGrass), true);
-  if (!normal || !masks || !shadow || !objects || !heavyGrass || !roughGrass || !fairwayGrass || !greenGrass) {
+  if (!objects || !heavyGrass || !roughGrass || !fairwayGrass || !greenGrass) {
     return null;
   }
-
-  gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
 
   return {
     canvas,
     gl,
     program,
-    positionBuffer,
-    textures: { normal, masks, shadow, objects, heavyGrass, roughGrass, fairwayGrass, greenGrass },
+    mesh: gpuMesh,
+    textures: { objects, heavyGrass, roughGrass, fairwayGrass, greenGrass },
+    attributes: {
+      world: gl.getAttribLocation(program, "a_world"),
+      elevation: gl.getAttribLocation(program, "a_elevation"),
+      normal: gl.getAttribLocation(program, "a_normal"),
+      surface: gl.getAttribLocation(program, "a_surface"),
+    },
     uniforms: {
-      normal: gl.getUniformLocation(program, "u_normal"),
-      masks: gl.getUniformLocation(program, "u_masks"),
-      shadow: gl.getUniformLocation(program, "u_shadow"),
       objects: gl.getUniformLocation(program, "u_objects"),
       heavyGrass: gl.getUniformLocation(program, "u_heavyGrass"),
       roughGrass: gl.getUniformLocation(program, "u_roughGrass"),
@@ -965,12 +993,76 @@ function createTerrainWebGlState(canvas: HTMLCanvasElement) {
       zoom: gl.getUniformLocation(program, "u_zoom"),
       time: gl.getUniformLocation(program, "u_time"),
       wind: gl.getUniformLocation(program, "u_wind"),
+      metresToWorld: gl.getUniformLocation(program, "u_metresToWorld"),
+      heightRange: gl.getUniformLocation(program, "u_heightRange"),
     },
   };
 }
 
+function createTerrainGpuMesh(gl: WebGLRenderingContext, mesh: CompiledTerrainMesh) {
+  const buffer = gl.createBuffer();
+  if (!buffer) {
+    return null;
+  }
+
+  const floatsPerVertex = 7;
+  const data = new Float32Array(mesh.triangles.length * 3 * floatsPerVertex);
+  const heights = mesh.vertices.map((vertex) => vertex[1]);
+  const heightMin = Math.min(...heights);
+  const heightMax = Math.max(...heights);
+  let cursor = 0;
+
+  for (const triangle of mesh.triangles) {
+    const surfaceId = compiledSurfaceId(triangle.surface);
+    for (const index of triangle.indices) {
+      const vertex = mesh.vertices[index];
+      const normal = mesh.normals[index] ?? [0, 1, 0];
+      data[cursor] = vertex[0];
+      data[cursor + 1] = -vertex[2];
+      data[cursor + 2] = vertex[1];
+      data[cursor + 3] = normal[0];
+      data[cursor + 4] = normal[1];
+      data[cursor + 5] = normal[2];
+      data[cursor + 6] = surfaceId;
+      cursor += floatsPerVertex;
+    }
+  }
+
+  gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+  gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+
+  return {
+    buffer,
+    vertexCount: data.length / floatsPerVertex,
+    source: mesh,
+    heightMin,
+    heightMax,
+  };
+}
+
+function compiledSurfaceId(surface: CompiledTerrainTriangle["surface"]) {
+  switch (surface) {
+    case "rough":
+      return 1;
+    case "fairway":
+      return 2;
+    case "green":
+      return 3;
+    case "tee":
+      return 4;
+    case "bunker":
+      return 5;
+    case "water":
+      return 6;
+    case "out_of_bounds":
+    default:
+      return 0;
+  }
+}
+
 function renderTerrainWebGl(
   canvas: HTMLCanvasElement | null,
+  mesh: CompiledTerrainMesh | null,
   camera: CameraState,
   width: number,
   height: number,
@@ -980,12 +1072,15 @@ function renderTerrainWebGl(
   if (!canvas) {
     return false;
   }
+  if (!mesh) {
+    return false;
+  }
 
   canvas.width = Math.max(1, Math.round(width * dpr));
   canvas.height = Math.max(1, Math.round(height * dpr));
 
-  if (!terrainWebGlState || terrainWebGlState.canvas !== canvas) {
-    terrainWebGlState = createTerrainWebGlState(canvas);
+  if (!terrainWebGlState || terrainWebGlState.canvas !== canvas || terrainWebGlState.mesh.source !== mesh) {
+    terrainWebGlState = createTerrainWebGlState(canvas, mesh);
   }
 
   const state = terrainWebGlState;
@@ -993,19 +1088,26 @@ function renderTerrainWebGl(
     return false;
   }
 
-  const { gl, program, positionBuffer, textures, uniforms } = state;
+  const { gl, program, mesh: gpuMesh, textures, uniforms, attributes } = state;
   gl.viewport(0, 0, canvas.width, canvas.height);
+  gl.disable(gl.DEPTH_TEST);
+  gl.disable(gl.CULL_FACE);
+  gl.clearColor(0.08, 0.24, 0.11, 1);
+  gl.clear(gl.COLOR_BUFFER_BIT);
   gl.useProgram(program);
 
-  const positionLocation = gl.getAttribLocation(program, "a_position");
-  gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
-  gl.enableVertexAttribArray(positionLocation);
-  gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
+  const stride = 7 * 4;
+  gl.bindBuffer(gl.ARRAY_BUFFER, gpuMesh.buffer);
+  gl.enableVertexAttribArray(attributes.world);
+  gl.vertexAttribPointer(attributes.world, 2, gl.FLOAT, false, stride, 0);
+  gl.enableVertexAttribArray(attributes.elevation);
+  gl.vertexAttribPointer(attributes.elevation, 1, gl.FLOAT, false, stride, 2 * 4);
+  gl.enableVertexAttribArray(attributes.normal);
+  gl.vertexAttribPointer(attributes.normal, 3, gl.FLOAT, false, stride, 3 * 4);
+  gl.enableVertexAttribArray(attributes.surface);
+  gl.vertexAttribPointer(attributes.surface, 1, gl.FLOAT, false, stride, 6 * 4);
 
   const textureEntries: Array<[WebGLTexture, WebGLUniformLocation | null]> = [
-    [textures.normal, uniforms.normal],
-    [textures.masks, uniforms.masks],
-    [textures.shadow, uniforms.shadow],
     [textures.objects, uniforms.objects],
     [textures.heavyGrass, uniforms.heavyGrass],
     [textures.roughGrass, uniforms.roughGrass],
@@ -1025,7 +1127,9 @@ function renderTerrainWebGl(
   gl.uniform1f(uniforms.zoom, camera.zoom);
   gl.uniform1f(uniforms.time, timestamp * 0.001);
   gl.uniform2f(uniforms.wind, Math.cos(renderRules.windDirection), Math.sin(renderRules.windDirection));
-  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  gl.uniform1f(uniforms.metresToWorld, worldUnitsPerYard / 0.9144);
+  gl.uniform2f(uniforms.heightRange, gpuMesh.heightMin, gpuMesh.heightMax);
+  gl.drawArrays(gl.TRIANGLES, 0, gpuMesh.vertexCount);
 
   return true;
 }
@@ -2163,6 +2267,7 @@ export function GolfinPrototype() {
   const holedRef = useRef(false);
   const holeStateRef = useRef<HoleState>("playing");
   const selectedClubRef = useRef<ClubDefinition>(defaultClub);
+  const terrainMeshRef = useRef<CompiledTerrainMesh | null>(null);
   const cameraRef = useRef<CameraState>({
     x: worldWidth / 2,
     y: worldHeight / 2,
@@ -2244,7 +2349,7 @@ export function GolfinPrototype() {
         : 0;
 
     ctx.clearRect(0, 0, width, height);
-    const terrainRendered = renderTerrainWebGl(terrainCanvasRef.current, camera, width, height, dpr, timestamp);
+    const terrainRendered = renderTerrainWebGl(terrainCanvasRef.current, terrainMeshRef.current, camera, width, height, dpr, timestamp);
 
     if (terrainRendered) {
       drawAtmosphere(ctx, width, height);
@@ -2267,6 +2372,32 @@ export function GolfinPrototype() {
       drawHud(ctx, width, ball, selectedClubRef.current);
     }
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadTerrainMesh() {
+      try {
+        const response = await fetch(terrainDebugSrc);
+        if (!response.ok) {
+          throw new Error(`Failed to load ${terrainDebugSrc}`);
+        }
+        const mesh = (await response.json()) as CompiledTerrainMesh;
+        if (!cancelled) {
+          terrainMeshRef.current = mesh;
+          draw();
+        }
+      } catch (error) {
+        console.error(error);
+      }
+    }
+
+    loadTerrainMesh();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [draw]);
 
   useEffect(() => {
     overviewUntilRef.current = performance.now() + 1500;

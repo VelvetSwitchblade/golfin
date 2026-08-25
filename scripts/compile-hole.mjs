@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const courseSlug = "goodwood-downs-1";
 const outDir = join(root, "public", "courses", courseSlug);
+const appDataDir = join(root, "app", "course-data");
 const osmFixturePath = join(root, "compiler", "fixtures", "goodwood-downs-osm.json");
 const downsOsmWays = {
   course: 166937233,
@@ -582,12 +583,13 @@ const course = orientCourse(sourceHole);
 const worldUnitsPerYard = lineLength(course.holeLine) / scorecardHoleYards;
 const assets = renderAssets();
 mkdirSync(outDir, { recursive: true });
+mkdirSync(appDataDir, { recursive: true });
 writePng(join(outDir, "terrain-base.png"), assets.terrain, width, height);
 writePng(join(outDir, "normal.png"), assets.normal, width, height);
 writePng(join(outDir, "masks.png"), assets.masks, width, height);
 writePng(join(outDir, "shadow.png"), assets.shadow, width, height);
 writePng(join(outDir, "objects.png"), assets.objects, width, height);
-writeFileSync(join(outDir, "hole.json"), `${JSON.stringify({
+const holePayload = `${JSON.stringify({
   id: course.id,
   courseId: course.courseId,
   courseName: course.courseName,
@@ -606,5 +608,7 @@ writeFileSync(join(outDir, "hole.json"), `${JSON.stringify({
   surfaces: course.surfaces,
   objects: createObjects(),
   attribution: "Map geometry derived from OpenStreetMap contributors where available.",
-}, null, 2)}\n`);
+}, null, 2)}\n`;
+writeFileSync(join(outDir, "hole.json"), holePayload);
+writeFileSync(join(appDataDir, `${courseSlug}-hole.json`), holePayload);
 console.log(`Compiled ${course.name} to ${outDir}`);
