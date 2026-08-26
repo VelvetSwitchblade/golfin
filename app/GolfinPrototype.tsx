@@ -240,64 +240,64 @@ const materials: Record<Surface["name"], Surface> = {
 
 const grassTextureSpecs: Record<Exclude<Surface["name"], "bunker">, GrassTextureSpec> = {
   fairway: {
-    albedoSrc: "/textures/grass/Grass005_1K-JPG_Color.jpg",
-    heightSrc: "/textures/grass/Grass005_1K-JPG_Displacement.jpg",
+    albedoSrc: "/courses/goodwood-downs-1/package/holes/01/render/material-library/local/fairway/albedo.png",
+    heightSrc: "/courses/goodwood-downs-1/package/holes/01/render/material-library/local/fairway/height.png",
     fallback: [66, 146, 72],
     tint: [92, 176, 72],
     tintStrength: 0.46,
     brightness: 1.08,
     contrast: 1.1,
     bumpStrength: 1.16,
-    tileSize: 192,
-    tileWorldSize: 150,
+    tileSize: 512,
+    tileWorldSize: 57,
   },
   green: {
-    albedoSrc: "/textures/grass/Grass006_1K-JPG_Color.jpg",
-    heightSrc: "/textures/grass/Grass006_1K-JPG_Displacement.jpg",
+    albedoSrc: "/courses/goodwood-downs-1/package/holes/01/render/material-library/local/green/albedo.png",
+    heightSrc: "/courses/goodwood-downs-1/package/holes/01/render/material-library/local/green/height.png",
     fallback: [94, 181, 91],
     tint: [126, 214, 99],
     tintStrength: 0.58,
     brightness: 1.18,
     contrast: 0.82,
     bumpStrength: 0.42,
-    tileSize: 192,
-    tileWorldSize: 120,
+    tileSize: 512,
+    tileWorldSize: 40,
   },
   heavy: {
-    albedoSrc: "/textures/grass/Grass001_1K-JPG_Color.jpg",
-    heightSrc: "/textures/grass/Grass001_1K-JPG_Displacement.jpg",
+    albedoSrc: "/courses/goodwood-downs-1/package/holes/01/render/material-library/local/out_of_bounds/albedo.png",
+    heightSrc: "/courses/goodwood-downs-1/package/holes/01/render/material-library/local/out_of_bounds/height.png",
     fallback: [31, 91, 50],
     tint: [40, 104, 49],
     tintStrength: 0.34,
     brightness: 0.84,
     contrast: 1.28,
     bumpStrength: 1.44,
-    tileSize: 224,
-    tileWorldSize: 190,
+    tileSize: 512,
+    tileWorldSize: 91,
   },
   rough: {
-    albedoSrc: "/textures/grass/Grass008_1K-JPG_Color.jpg",
-    heightSrc: "/textures/grass/Grass008_1K-JPG_Displacement.jpg",
+    albedoSrc: "/courses/goodwood-downs-1/package/holes/01/render/material-library/local/rough/albedo.png",
+    heightSrc: "/courses/goodwood-downs-1/package/holes/01/render/material-library/local/rough/height.png",
     fallback: [42, 116, 59],
     tint: [54, 132, 61],
     tintStrength: 0.4,
     brightness: 0.95,
     contrast: 1.22,
     bumpStrength: 1.32,
-    tileSize: 224,
-    tileWorldSize: 170,
+    tileSize: 512,
+    tileWorldSize: 68,
   },
   tee: {
-    albedoSrc: "/textures/grass/Grass005_1K-JPG_Color.jpg",
-    heightSrc: "/textures/grass/Grass005_1K-JPG_Displacement.jpg",
+    albedoSrc: "/courses/goodwood-downs-1/package/holes/01/render/material-library/local/tee/albedo.png",
+    heightSrc: "/courses/goodwood-downs-1/package/holes/01/render/material-library/local/tee/height.png",
     fallback: [87, 166, 86],
     tint: [105, 190, 85],
     tintStrength: 0.5,
     brightness: 1.12,
     contrast: 0.96,
     bumpStrength: 0.72,
-    tileSize: 192,
-    tileWorldSize: 125,
+    tileSize: 512,
+    tileWorldSize: 46,
   },
 };
 
@@ -2014,6 +2014,39 @@ function drawSurfaceTextures(
   }
 }
 
+function drawCompiledCloseSurfaceDetail(
+  ctx: CanvasRenderingContext2D,
+  sx: (value: number) => number,
+  sy: (value: number) => number,
+  scale: number,
+  timestamp: number,
+) {
+  const detailAmount = clamp((scale - 1.2) / 0.85, 0, 1);
+  if (detailAmount <= 0) {
+    return;
+  }
+
+  ctx.save();
+  ctx.globalAlpha = 0.42 * detailAmount;
+  ctx.globalCompositeOperation = "soft-light";
+  drawMaintainedRough(ctx, sx, sy, scale);
+  drawSurfacePolygons(ctx, sx, sy, scale);
+  ctx.restore();
+
+  ctx.save();
+  ctx.globalAlpha = 0.26 * detailAmount;
+  ctx.globalCompositeOperation = "source-over";
+  drawSurfaceTextures(ctx, sx, sy, scale);
+  ctx.restore();
+
+  if (renderRules.drawWindSheen) {
+    ctx.save();
+    ctx.globalAlpha = 0.45 * detailAmount;
+    drawWindGrassSheen(ctx, sx, sy, scale, timestamp);
+    ctx.restore();
+  }
+}
+
 function drawTrees(
   ctx: CanvasRenderingContext2D,
   sx: (value: number) => number,
@@ -2471,6 +2504,7 @@ export function GolfinPrototype() {
       ctx.globalCompositeOperation = "destination-over";
       drawCompiledWaterBackdrop(ctx, width, height);
       ctx.globalCompositeOperation = "source-over";
+      drawCompiledCloseSurfaceDetail(ctx, sx, sy, camera.zoom, timestamp);
       drawAtmosphere(ctx, width, height);
       drawPin(ctx, sx, sy, camera.zoom);
     } else if (terrainRendered) {

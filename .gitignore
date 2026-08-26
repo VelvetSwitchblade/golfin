@@ -46,3 +46,4 @@ next-env.d.ts
 
 # local texture/material inputs may be licensed and should not be pushed by default
 /compiler/material-library/local/
+/public/courses/goodwood-downs-1/package/holes/01/render/material-library/local/

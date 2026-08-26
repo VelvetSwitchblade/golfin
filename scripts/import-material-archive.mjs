@@ -7,7 +7,8 @@ import sharp from "sharp";
 const execFile = promisify(execFileCallback);
 
 const archive = process.argv[2] ?? "/Users/jordan/Desktop/Texture/Archive.zip";
-const outputRoot = "compiler/material-library/local";
+const compilerOutputRoot = "compiler/material-library/local";
+const runtimeOutputRoot = "public/courses/goodwood-downs-1/package/holes/01/render/material-library/local";
 const textureSize = Number(process.env.GOLFIN_MATERIAL_SIZE ?? 1024);
 
 const materialSpecs = {
@@ -86,7 +87,8 @@ const allowedImage = /\.(png|jpe?g|tiff?)$/i;
 
 async function main() {
   const entries = await listArchiveEntries();
-  await mkdir(outputRoot, { recursive: true });
+  await mkdir(compilerOutputRoot, { recursive: true });
+  await mkdir(runtimeOutputRoot, { recursive: true });
 
   const manifest = {
     schema: "golfin.local-material-library.v0",
@@ -99,8 +101,10 @@ async function main() {
 
   for (const [materialId, spec] of Object.entries(materialSpecs)) {
     const materialEntries = entries.filter((entry) => entry.startsWith(`${spec.directory}/`) && allowedImage.test(entry));
-    const outputDirectory = join(outputRoot, materialId);
+    const outputDirectory = join(compilerOutputRoot, materialId);
+    const runtimeOutputDirectory = join(runtimeOutputRoot, materialId);
     await mkdir(outputDirectory, { recursive: true });
+    await mkdir(runtimeOutputDirectory, { recursive: true });
 
     const channels = {};
     const sourceEntries = {};
@@ -112,12 +116,8 @@ async function main() {
 
       const outputName = `${channel}.png`;
       const input = await readArchiveEntry(entry);
-      await sharp(input)
-        .rotate()
-        .resize({ width: textureSize, height: textureSize, fit: "cover" })
-        .ensureAlpha()
-        .png({ compressionLevel: 9, palette: false })
-        .toFile(join(outputDirectory, outputName));
+      await writeRuntimeTexture(input, join(outputDirectory, outputName));
+      await writeRuntimeTexture(input, join(runtimeOutputDirectory, outputName));
       channels[channel] = `${materialId}/${outputName}`;
       sourceEntries[channel] = entry;
     }
@@ -133,8 +133,29 @@ async function main() {
     };
   }
 
-  await writeFile(join(outputRoot, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
-  console.log(JSON.stringify({ output: outputRoot, textureSize, materials: Object.keys(manifest.materials) }, null, 2));
+  await writeFile(join(compilerOutputRoot, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
+  await writeFile(join(runtimeOutputRoot, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
+  console.log(
+    JSON.stringify(
+      {
+        compilerOutput: compilerOutputRoot,
+        runtimeOutput: runtimeOutputRoot,
+        textureSize,
+        materials: Object.keys(manifest.materials),
+      },
+      null,
+      2,
+    ),
+  );
+}
+
+async function writeRuntimeTexture(input, outputPath) {
+  await sharp(input)
+    .rotate()
+    .resize({ width: textureSize, height: textureSize, fit: "cover" })
+    .ensureAlpha()
+    .png({ compressionLevel: 9, palette: false })
+    .toFile(outputPath);
 }
 
 async function listArchiveEntries() {
