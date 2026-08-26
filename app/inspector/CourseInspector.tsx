@@ -203,6 +203,7 @@ type ViewTransform = {
 
 const packageRoot = "/courses/goodwood-downs-1/package";
 const holeRoot = `${packageRoot}/holes/01`;
+const localMaterialRoot = `${holeRoot}/render/material-library/local`;
 
 const inspectorModes: Array<{ id: InspectorMode; label: string }> = [
   { id: "render", label: "Render" },
@@ -232,6 +233,15 @@ const materialColors: Record<SurfaceName, string> = {
   tee: "#83bd4f",
   bunker: "#caa66d",
   water: "#1785a6",
+};
+
+const renderDetailMaterials: Partial<Record<SurfaceName, { albedo: string; scaleMetres: number }>> = {
+  out_of_bounds: { albedo: `${localMaterialRoot}/out_of_bounds/albedo.png`, scaleMetres: 16 },
+  rough: { albedo: `${localMaterialRoot}/rough/albedo.png`, scaleMetres: 12 },
+  fairway: { albedo: `${localMaterialRoot}/fairway/albedo.png`, scaleMetres: 10 },
+  green: { albedo: `${localMaterialRoot}/green/albedo.png`, scaleMetres: 7 },
+  tee: { albedo: `${localMaterialRoot}/tee/albedo.png`, scaleMetres: 8 },
+  bunker: { albedo: `${localMaterialRoot}/bunker/albedo.png`, scaleMetres: 5 },
 };
 
 const modeDescriptions: Record<InspectorMode, string> = {
@@ -310,14 +320,17 @@ export function CourseInspector() {
     const waterFill = data.renderManifest.assets.contextWaterFill
       ? inspectorImage(`${holeRoot}/render/${data.renderManifest.assets.contextWaterFill}`)
       : null;
+    const detailImages = Object.values(renderDetailMaterials).map((material) => inspectorImage(material.albedo));
     const redraw = () => setAssetTick((tick) => tick + 1);
     preview.addEventListener("load", redraw);
     contextWater.addEventListener("load", redraw);
     waterFill?.addEventListener("load", redraw);
+    detailImages.forEach((image) => image.addEventListener("load", redraw));
     return () => {
       preview.removeEventListener("load", redraw);
       contextWater.removeEventListener("load", redraw);
       waterFill?.removeEventListener("load", redraw);
+      detailImages.forEach((image) => image.removeEventListener("load", redraw));
     };
   }, [data]);
 
@@ -359,6 +372,7 @@ export function CourseInspector() {
 
     if (mode === "render") {
       drawCompiledRender(context, data, transform);
+      drawRenderDetailMaterials(context, data, transform);
       drawGameplay(context, data.gameplay, transform);
     }
 
@@ -730,6 +744,31 @@ function drawCompiledRender(
   context.restore();
 }
 
+function drawRenderDetailMaterials(
+  context: CanvasRenderingContext2D,
+  data: InspectorData,
+  transform: ViewTransform,
+) {
+  context.save();
+  context.globalCompositeOperation = "soft-light";
+  context.globalAlpha = 0.28;
+
+  for (const feature of data.gameplay.features) {
+    const material = renderDetailMaterials[feature.surface];
+    if (!material) {
+      continue;
+    }
+    const pattern = materialPattern(context, material.albedo, material.scaleMetres, transform);
+    if (!pattern) {
+      continue;
+    }
+    context.fillStyle = pattern;
+    fillPolygon(context, feature.geometry, transform);
+  }
+
+  context.restore();
+}
+
 function drawTerrainMesh(
   context: CanvasRenderingContext2D,
   data: InspectorData,
@@ -916,6 +955,45 @@ function strokePolygon(
   });
   context.closePath();
   context.stroke();
+}
+
+function fillPolygon(
+  context: CanvasRenderingContext2D,
+  points: Array<[number, number]>,
+  transform: ViewTransform,
+) {
+  context.beginPath();
+  points.forEach((point, index) => {
+    const canvasPoint = worldToCanvas(point, transform);
+    if (index === 0) {
+      context.moveTo(canvasPoint[0], canvasPoint[1]);
+    } else {
+      context.lineTo(canvasPoint[0], canvasPoint[1]);
+    }
+  });
+  context.closePath();
+  context.fill();
+}
+
+function materialPattern(
+  context: CanvasRenderingContext2D,
+  src: string,
+  scaleMetres: number,
+  transform: ViewTransform,
+) {
+  const image = inspectorImage(src);
+  if (!image.complete || image.naturalWidth === 0) {
+    return null;
+  }
+  const pattern = context.createPattern(image, "repeat");
+  if (!pattern) {
+    return null;
+  }
+  if (typeof pattern.setTransform === "function") {
+    const pixelsPerTexture = scaleMetres * transform.scale;
+    pattern.setTransform(new DOMMatrix([pixelsPerTexture / image.naturalWidth, 0, 0, pixelsPerTexture / image.naturalHeight, transform.offsetX, transform.offsetY]));
+  }
+  return pattern;
 }
 
 function sampleSurface(data: InspectorData, x: number, y: number): SurfaceName {
