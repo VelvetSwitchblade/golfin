@@ -75,7 +75,6 @@ type SurfaceEmbossRule = {
 type TerrainTextureSet = {
   masks: WebGLTexture;
   shadow: WebGLTexture;
-  objects: WebGLTexture;
   heavyGrass: WebGLTexture;
   roughGrass: WebGLTexture;
   fairwayGrass: WebGLTexture;
@@ -129,7 +128,6 @@ type TerrainWebGlState = {
   uniforms: {
     masks: WebGLUniformLocation | null;
     shadow: WebGLUniformLocation | null;
-    objects: WebGLUniformLocation | null;
     heavyGrass: WebGLUniformLocation | null;
     roughGrass: WebGLUniformLocation | null;
     fairwayGrass: WebGLUniformLocation | null;
@@ -142,6 +140,7 @@ type TerrainWebGlState = {
     wind: WebGLUniformLocation | null;
     metresToWorld: WebGLUniformLocation | null;
     heightRange: WebGLUniformLocation | null;
+    meshBounds: WebGLUniformLocation | null;
   };
 };
 
@@ -546,7 +545,6 @@ const terrainDebugSrc = `${courseAssetBase}/package/holes/01/terrain-debug.json`
 const terrainAssetSources = {
   masks: `${courseAssetBase}/masks.png`,
   shadow: `${courseAssetBase}/shadow.png`,
-  objects: `${courseAssetBase}/objects.png`,
   heavyGrass: grassTextureSpecs.heavy.albedoSrc,
   roughGrass: grassTextureSpecs.rough.albedoSrc,
   fairwayGrass: grassTextureSpecs.fairway.albedoSrc,
@@ -862,7 +860,6 @@ function createTerrainWebGlState(canvas: HTMLCanvasElement, mesh: CompiledTerrai
 
     uniform sampler2D u_masks;
     uniform sampler2D u_shadow;
-    uniform sampler2D u_objects;
     uniform sampler2D u_heavyGrass;
     uniform sampler2D u_roughGrass;
     uniform sampler2D u_fairwayGrass;
@@ -871,6 +868,7 @@ function createTerrainWebGlState(canvas: HTMLCanvasElement, mesh: CompiledTerrai
     uniform float u_time;
     uniform vec2 u_wind;
     uniform vec2 u_heightRange;
+    uniform vec4 u_meshBounds;
     varying vec2 v_world;
     varying float v_elevation;
     varying vec3 v_normal;
@@ -945,7 +943,9 @@ function createTerrainWebGlState(canvas: HTMLCanvasElement, mesh: CompiledTerrai
       float edge = aux.a;
       float feature = clamp(rough + fairway + green + bunker + tee + water, 0.0, 1.0);
       float normalizedHeight = clamp((v_elevation - u_heightRange.x) / max(0.001, u_heightRange.y - u_heightRange.x), 0.0, 1.0);
-      vec3 normal = normalize(mix(vec3(0.0, 1.0, 0.0), vec3(v_normal.x, v_normal.y, -v_normal.z), 0.72));
+      float boundsDistance = min(min(world.x - u_meshBounds.x, u_meshBounds.z - world.x), min(world.y - u_meshBounds.y, u_meshBounds.w - world.y));
+      float meshInfluence = smoothstep(0.0, 90.0, boundsDistance);
+      vec3 normal = normalize(mix(vec3(0.0, 1.0, 0.0), vec3(v_normal.x, v_normal.y, -v_normal.z), 0.62 * meshInfluence));
       vec3 lightDir = normalize(vec3(-0.52, 0.84, 0.36));
       float terrainLight = clamp(dot(normal, lightDir), 0.0, 1.0);
       float slopeShade = clamp(normal.y, 0.0, 1.0);
@@ -960,11 +960,9 @@ function createTerrainWebGlState(canvas: HTMLCanvasElement, mesh: CompiledTerrai
       color = mix(color, waterMaterial(world, u_time, u_wind), water);
       color *= 0.62 + terrainLight * 0.35 + slopeShade * 0.13;
       color *= 0.75 + bakedShadow * 0.25;
-      color *= 0.9 + normalizedHeight * 0.12;
+      color *= 0.9 + normalizedHeight * 0.1 * meshInfluence;
       color += grassMotion * (1.0 - water);
       color += edge * vec3(0.014, 0.012, 0.006);
-      vec4 objects = texture2D(u_objects, uv);
-      color = mix(color, objects.rgb, objects.a);
       gl_FragColor = vec4(color, 1.0);
     }
   `;
@@ -977,12 +975,11 @@ function createTerrainWebGlState(canvas: HTMLCanvasElement, mesh: CompiledTerrai
 
   const masks = createTerrainTexture(gl, terrainImage(terrainAssetSources.masks));
   const shadow = createTerrainTexture(gl, terrainImage(terrainAssetSources.shadow));
-  const objects = createTerrainTexture(gl, terrainImage(terrainAssetSources.objects));
   const heavyGrass = createTerrainTexture(gl, terrainImage(terrainAssetSources.heavyGrass), true);
   const roughGrass = createTerrainTexture(gl, terrainImage(terrainAssetSources.roughGrass), true);
   const fairwayGrass = createTerrainTexture(gl, terrainImage(terrainAssetSources.fairwayGrass), true);
   const greenGrass = createTerrainTexture(gl, terrainImage(terrainAssetSources.greenGrass), true);
-  if (!masks || !shadow || !objects || !heavyGrass || !roughGrass || !fairwayGrass || !greenGrass) {
+  if (!masks || !shadow || !heavyGrass || !roughGrass || !fairwayGrass || !greenGrass) {
     return null;
   }
 
@@ -991,7 +988,7 @@ function createTerrainWebGlState(canvas: HTMLCanvasElement, mesh: CompiledTerrai
     gl,
     program,
     mesh: gpuMesh,
-    textures: { masks, shadow, objects, heavyGrass, roughGrass, fairwayGrass, greenGrass },
+    textures: { masks, shadow, heavyGrass, roughGrass, fairwayGrass, greenGrass },
     attributes: {
       world: gl.getAttribLocation(program, "a_world"),
       elevation: gl.getAttribLocation(program, "a_elevation"),
@@ -1001,7 +998,6 @@ function createTerrainWebGlState(canvas: HTMLCanvasElement, mesh: CompiledTerrai
     uniforms: {
       masks: gl.getUniformLocation(program, "u_masks"),
       shadow: gl.getUniformLocation(program, "u_shadow"),
-      objects: gl.getUniformLocation(program, "u_objects"),
       heavyGrass: gl.getUniformLocation(program, "u_heavyGrass"),
       roughGrass: gl.getUniformLocation(program, "u_roughGrass"),
       fairwayGrass: gl.getUniformLocation(program, "u_fairwayGrass"),
@@ -1014,6 +1010,7 @@ function createTerrainWebGlState(canvas: HTMLCanvasElement, mesh: CompiledTerrai
       wind: gl.getUniformLocation(program, "u_wind"),
       metresToWorld: gl.getUniformLocation(program, "u_metresToWorld"),
       heightRange: gl.getUniformLocation(program, "u_heightRange"),
+      meshBounds: gl.getUniformLocation(program, "u_meshBounds"),
     },
   };
 }
@@ -1146,7 +1143,8 @@ function renderTerrainWebGl(
   gl.vertexAttribPointer(attributes.surface, 1, gl.FLOAT, false, stride, 6 * 4);
 
   const textureEntries: Array<[WebGLTexture, WebGLUniformLocation | null]> = [
-    [textures.objects, uniforms.objects],
+    [textures.masks, uniforms.masks],
+    [textures.shadow, uniforms.shadow],
     [textures.heavyGrass, uniforms.heavyGrass],
     [textures.roughGrass, uniforms.roughGrass],
     [textures.fairwayGrass, uniforms.fairwayGrass],
@@ -1167,6 +1165,13 @@ function renderTerrainWebGl(
   gl.uniform2f(uniforms.wind, Math.cos(renderRules.windDirection), Math.sin(renderRules.windDirection));
   gl.uniform1f(uniforms.metresToWorld, worldUnitsPerYard / 0.9144);
   gl.uniform2f(uniforms.heightRange, gpuMesh.heightMin, gpuMesh.heightMax);
+  gl.uniform4f(
+    uniforms.meshBounds,
+    gpuMesh.source.bounds.minX * (worldUnitsPerYard / 0.9144),
+    gpuMesh.source.bounds.minY * (worldUnitsPerYard / 0.9144),
+    gpuMesh.source.bounds.maxX * (worldUnitsPerYard / 0.9144),
+    gpuMesh.source.bounds.maxY * (worldUnitsPerYard / 0.9144),
+  );
   gl.drawArrays(gl.TRIANGLES, 0, gpuMesh.vertexCount);
 
   return true;
