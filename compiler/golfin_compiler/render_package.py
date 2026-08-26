@@ -14,6 +14,7 @@ from .surfaces import SURFACE_IDS
 
 ROUGH_COLLAR_METRES = 21.6
 RENDER_TARGET_HEIGHT = 512
+CONTEXT_WATER_TILE_SIZE = 256
 
 Point = tuple[float, float]
 
@@ -47,6 +48,7 @@ def export_render_package(
     height_map = bytearray(width * height * 4)
     surface_raw = bytearray(width * height)
     surface_preview = bytearray(width * height * 4)
+    context_water_fill = create_context_water_fill()
 
     height_min, height_max = height_range(dtm)
     light_dir = normalize3((-0.38, 0.72, -0.58))
@@ -103,6 +105,7 @@ def export_render_package(
     write_png(render_dir / "terrain-height.png", height_map, width, height)
     write_png(render_dir / "material-mask.png", material_mask, width, height)
     write_png(render_dir / "context-water-mask.png", context_water_mask, width, height)
+    write_png(render_dir / "context-water-fill.png", context_water_fill, CONTEXT_WATER_TILE_SIZE, CONTEXT_WATER_TILE_SIZE)
     write_png(render_dir / "terrain-preview.png", surface_preview, width, height)
 
     manifest: dict[str, object] = {
@@ -128,6 +131,7 @@ def export_render_package(
             "height": "terrain-height.png",
             "materialMask": "material-mask.png",
             "contextWaterMask": "context-water-mask.png",
+            "contextWaterFill": "context-water-fill.png",
             "surfaceId": "surface-id.r8",
             "preview": "terrain-preview.png",
         },
@@ -258,6 +262,32 @@ def water_color(x: float, y: float) -> tuple[int, int, int]:
         clamp_int(112 * (1.0 + ripple)),
         clamp_int(144 * (1.0 + ripple * 1.2)),
     )
+
+
+def create_context_water_fill() -> bytearray:
+    pixels = bytearray(CONTEXT_WATER_TILE_SIZE * CONTEXT_WATER_TILE_SIZE * 4)
+    size = CONTEXT_WATER_TILE_SIZE
+    for py in range(size):
+        v = py / size
+        for px in range(size):
+            u = px / size
+            caustic = (
+                math.sin((u * 6.0 + math.sin(v * math.tau * 2.0) * 0.15) * math.tau)
+                + math.sin((v * 7.0 - u * 1.5) * math.tau) * 0.45
+                + math.sin((u * 11.0 + v * 4.0) * math.tau) * 0.22
+            )
+            glint = max(0.0, math.sin((u * 3.0 - v * 2.0) * math.tau)) ** 9
+            tone = caustic * 0.045 + glint * 0.1
+            index = (py * size + px) * 4
+            pixels[index : index + 4] = bytes(
+                (
+                    clamp_int(22 * (1.0 + tone)),
+                    clamp_int(113 * (1.0 + tone)),
+                    clamp_int(146 * (1.0 + tone * 1.25)),
+                    255,
+                )
+            )
+    return pixels
 
 
 def terrain_normal(

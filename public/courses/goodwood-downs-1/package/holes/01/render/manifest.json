@@ -34,6 +34,7 @@
     "height": "terrain-height.png",
     "materialMask": "material-mask.png",
     "contextWaterMask": "context-water-mask.png",
+    "contextWaterFill": "context-water-fill.png",
     "surfaceId": "surface-id.r8",
     "preview": "terrain-preview.png"
   },

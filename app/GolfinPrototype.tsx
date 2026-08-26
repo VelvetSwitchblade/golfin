@@ -543,6 +543,7 @@ const textureImageCache = new Map<string, HTMLImageElement>();
 const courseAssetBase = "/courses/goodwood-downs-1";
 const terrainDebugSrc = `${courseAssetBase}/package/holes/01/terrain-debug.json`;
 const compiledTerrainPreviewSrc = `${courseAssetBase}/package/holes/01/render/terrain-preview.png`;
+const compiledContextWaterFillSrc = `${courseAssetBase}/package/holes/01/render/context-water-fill.png`;
 const terrainAssetSources = {
   masks: `${courseAssetBase}/masks.png`,
   shadow: `${courseAssetBase}/shadow.png`,
@@ -852,6 +853,25 @@ function drawCompiledTerrainPreview(
   ctx.drawImage(image, sx(minX), sy(minY), sx(maxX) - sx(minX), sy(maxY) - sy(minY));
   ctx.restore();
   return true;
+}
+
+function drawCompiledWaterBackdrop(ctx: CanvasRenderingContext2D, width: number, height: number) {
+  const image = terrainImage(compiledContextWaterFillSrc);
+
+  ctx.save();
+  if (imageReady(image)) {
+    const pattern = ctx.createPattern(image, "repeat");
+    if (pattern) {
+      ctx.fillStyle = pattern;
+      ctx.fillRect(0, 0, width, height);
+      ctx.restore();
+      return;
+    }
+  }
+
+  ctx.fillStyle = "#16718f";
+  ctx.fillRect(0, 0, width, height);
+  ctx.restore();
 }
 
 function createTerrainWebGlState(canvas: HTMLCanvasElement, mesh: CompiledTerrainMesh) {
@@ -2282,6 +2302,11 @@ function drawMiniMap(
   ctx.clip();
 
   const compilerPreviewRendered = drawCompiledTerrainPreview(ctx, sx, sy, mesh);
+  if (compilerPreviewRendered) {
+    ctx.globalCompositeOperation = "destination-over";
+    drawCompiledWaterBackdrop(ctx, width, height);
+    ctx.globalCompositeOperation = "source-over";
+  }
   if (!compilerPreviewRendered) {
     ctx.fillStyle = worldGrassPattern(ctx, "heavy", sx, sy, scale) ?? heavy.color;
     ctx.fillRect(left, top, mapWidth, mapHeight);
@@ -2443,6 +2468,9 @@ export function GolfinPrototype() {
 
     if (compilerPreviewRendered) {
       clearTerrainCanvas(terrainCanvasRef.current, width, height, dpr);
+      ctx.globalCompositeOperation = "destination-over";
+      drawCompiledWaterBackdrop(ctx, width, height);
+      ctx.globalCompositeOperation = "source-over";
       drawAtmosphere(ctx, width, height);
       drawPin(ctx, sx, sy, camera.zoom);
     } else if (terrainRendered) {

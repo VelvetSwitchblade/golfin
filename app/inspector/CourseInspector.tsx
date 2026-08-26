@@ -306,12 +306,17 @@ export function CourseInspector() {
     }
     const preview = inspectorImage(`${holeRoot}/render/${data.renderManifest.assets.preview}`);
     const contextWater = inspectorImage(`${holeRoot}/render/${data.renderManifest.assets.contextWaterMask}`);
+    const waterFill = data.renderManifest.assets.contextWaterFill
+      ? inspectorImage(`${holeRoot}/render/${data.renderManifest.assets.contextWaterFill}`)
+      : null;
     const redraw = () => setAssetTick((tick) => tick + 1);
     preview.addEventListener("load", redraw);
     contextWater.addEventListener("load", redraw);
+    waterFill?.addEventListener("load", redraw);
     return () => {
       preview.removeEventListener("load", redraw);
       contextWater.removeEventListener("load", redraw);
+      waterFill?.removeEventListener("load", redraw);
     };
   }, [data]);
 
@@ -701,11 +706,16 @@ function drawCompiledRender(
   transform: ViewTransform,
 ) {
   const image = inspectorImage(`${holeRoot}/render/${data.renderManifest.assets.preview}`);
+  const waterFillSrc = data.renderManifest.assets.contextWaterFill;
+  const waterFill = waterFillSrc ? inspectorImage(`${holeRoot}/render/${waterFillSrc}`) : null;
   const topLeft = worldToCanvas([data.renderManifest.bounds.minX, data.renderManifest.bounds.minY], transform);
   const bottomRight = worldToCanvas([data.renderManifest.bounds.maxX, data.renderManifest.bounds.maxY], transform);
 
   context.save();
-  context.fillStyle = "#0a2230";
+  const pattern = waterFill && waterFill.complete && waterFill.naturalWidth > 0
+    ? context.createPattern(waterFill, "repeat")
+    : null;
+  context.fillStyle = pattern ?? "#16718f";
   context.fillRect(0, 0, context.canvas.width, context.canvas.height);
   if (image.complete && image.naturalWidth > 0) {
     context.imageSmoothingEnabled = true;
