@@ -33,8 +33,21 @@
     "light": "terrain-light.png",
     "height": "terrain-height.png",
     "materialMask": "material-mask.png",
+    "contextWaterMask": "context-water-mask.png",
     "surfaceId": "surface-id.r8",
     "preview": "terrain-preview.png"
+  },
+  "context": {
+    "island": {
+      "source": "deterministic-visual-context",
+      "gameplaySurface": false,
+      "landAlpha": "1 means generated island land; 0 means visual-only surrounding water"
+    },
+    "water": {
+      "source": "deterministic-visual-context",
+      "gameplaySurface": false,
+      "mask": "context-water-mask.png"
+    }
   },
   "lighting": {
     "azimuthDegrees": 305,

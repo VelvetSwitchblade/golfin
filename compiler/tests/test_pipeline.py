@@ -8,7 +8,7 @@ from pathlib import Path
 
 from golfin_compiler.dtm import read_ascii_grid
 from golfin_compiler.dtm import DTMGrid
-from golfin_compiler.mesh import TerrainMesh, terrain_height
+from golfin_compiler.mesh import TerrainMesh, island_land_alpha, terrain_height
 from golfin_compiler.model import CourseModel, Feature, HoleModel, Provenance
 from golfin_compiler.pipeline import build_surface_map, compile_legacy_goodwood, normalize_legacy_hole, validate_course
 
@@ -41,6 +41,7 @@ class CompilerPipelineTest(unittest.TestCase):
             self.assertGreaterEqual(validation["elevationFidelity"], 85)
             self.assertGreater(validation["terrainMesh"]["triangles"], 0)
             self.assertEqual(validation["terrainMesh"]["envelopePaddingMetres"], 42.0)
+            self.assertEqual(validation["terrainMesh"]["visualContextIsland"], 1)
             course = json.loads((Path(tmp) / "course.json").read_text())
             self.assertEqual(course["elevation"]["source"], "Environment Agency LIDAR Composite DTM 1m")
             self.assertEqual(course["elevation"]["cellSizeMetres"], 1.0)
@@ -54,7 +55,7 @@ class CompilerPipelineTest(unittest.TestCase):
             self.assertIn("no-procedural-water", {check["name"] for check in validation["checks"]})
             manifest = json.loads((Path(tmp) / "holes" / "01" / "manifest.json").read_text())
             self.assertEqual(manifest["assets"]["renderPackage"], "render/manifest.json")
-            self.assertEqual(manifest["terrainEnvelope"]["kind"], "expanded-island-skirt")
+            self.assertEqual(manifest["terrainEnvelope"]["kind"], "generated-island-context")
             self.assertEqual(manifest["terrainEnvelope"]["courseFeaturePolicy"], "does-not-create-gameplay-water")
             render_manifest = json.loads((Path(tmp) / "holes" / "01" / "render" / "manifest.json").read_text())
             self.assertEqual(render_manifest["schema"], "golfin.render-package.v0")
@@ -72,9 +73,14 @@ class CompilerPipelineTest(unittest.TestCase):
                 (render_manifest["width"], render_manifest["height"]),
             )
             self.assertEqual(
+                png_size(Path(tmp) / "holes" / "01" / "render" / "context-water-mask.png"),
+                (render_manifest["width"], render_manifest["height"]),
+            )
+            self.assertEqual(
                 len((Path(tmp) / "holes" / "01" / "render" / "surface-id.r8").read_bytes()),
                 render_manifest["width"] * render_manifest["height"],
             )
+            self.assertFalse(any(feature["surface"] == "water" for feature in gameplay["features"]))
 
     def test_validation_rejects_procedural_water_as_course_geometry(self) -> None:
         course = CourseModel(
@@ -213,6 +219,17 @@ class CompilerPipelineTest(unittest.TestCase):
         centre_height = terrain_height(hole, classify, dtm, 5, 5)
 
         self.assertLess(centre_height, edge_height - 0.45)
+
+    def test_island_context_separates_land_from_visual_water(self) -> None:
+        source = Path("public/courses/goodwood-downs-1/hole.json")
+        course = normalize_legacy_hole(json.loads(source.read_text()))
+        hole = course.holes[0]
+
+        tee_land = island_land_alpha(hole, hole.tee[0], hole.tee[1])
+        far_context = island_land_alpha(hole, hole.tee[0] - 75, hole.tee[1] - 75)
+
+        self.assertGreater(tee_land, 0.95)
+        self.assertLess(far_context, 0.05)
 
     def test_ascii_dtm_reader_samples_height(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

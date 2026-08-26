@@ -7,7 +7,7 @@ from pathlib import Path
 from .dtm import DTMGrid
 from .geometry import distance_to_segment, point_in_polygon
 from .materials import write_png
-from .mesh import point_in_feature_bbox, surface_terrain_height
+from .mesh import island_land_alpha, point_in_feature_bbox, surface_terrain_height
 from .model import Feature, HoleModel, SurfaceId
 from .pipeline_types import SurfaceClassifier
 from .surfaces import SURFACE_IDS
@@ -43,6 +43,7 @@ def export_render_package(
     normal = bytearray(width * height * 4)
     light = bytearray(width * height * 4)
     material_mask = bytearray(width * height * 4)
+    context_water_mask = bytearray(width * height * 4)
     height_map = bytearray(width * height * 4)
     surface_raw = bytearray(width * height)
     surface_preview = bytearray(width * height * 4)
@@ -64,12 +65,17 @@ def export_render_package(
             surface_raw[index] = SURFACE_IDS[surface]
 
             masks = material_masks(features_by_surface, x, y, surface)
+            land_alpha = island_land_alpha(hole, x, y)
+            context_water = 1.0 - land_alpha
             h = surface_terrain_height(hole, dtm, x, y, surface)
             n = terrain_normal(hole, classify, dtm, x, y, max(metres_per_pixel_x, metres_per_pixel_y), surface)
             hillshade = clamp(0.48 + 0.52 * dot3(n, light_dir), 0.0, 1.0)
             ambient_edge = edge_ambient_occlusion(features_by_surface, x, y)
             shade = clamp(hillshade * ambient_edge, 0.2, 1.18)
             color = terrain_color(surface, masks, x, y, h)
+            if context_water > 0.01:
+                water = water_color(x, y)
+                color = tuple(clamp_int(mix(water[channel], color[channel], land_alpha)) for channel in range(3))
             shaded = tuple(clamp_int(channel * shade) for channel in color)
 
             albedo[index * 4 : index * 4 + 4] = bytes((*color, 255))
@@ -84,6 +90,8 @@ def export_render_package(
                     clamp_int(masks["bunker"] * 255),
                 )
             )
+            water_mask_value = clamp_int(context_water * 255)
+            context_water_mask[index * 4 : index * 4 + 4] = bytes((water_mask_value, water_mask_value, water_mask_value, 255))
             h_value = clamp_int(((h - height_min) / max(0.01, height_max - height_min)) * 255)
             height_map[index * 4 : index * 4 + 4] = bytes((h_value, h_value, h_value, 255))
             surface_preview[index * 4 : index * 4 + 4] = bytes((*shaded, 255))
@@ -94,6 +102,7 @@ def export_render_package(
     write_png(render_dir / "terrain-light.png", light, width, height)
     write_png(render_dir / "terrain-height.png", height_map, width, height)
     write_png(render_dir / "material-mask.png", material_mask, width, height)
+    write_png(render_dir / "context-water-mask.png", context_water_mask, width, height)
     write_png(render_dir / "terrain-preview.png", surface_preview, width, height)
 
     manifest: dict[str, object] = {
@@ -118,8 +127,21 @@ def export_render_package(
             "light": "terrain-light.png",
             "height": "terrain-height.png",
             "materialMask": "material-mask.png",
+            "contextWaterMask": "context-water-mask.png",
             "surfaceId": "surface-id.r8",
             "preview": "terrain-preview.png",
+        },
+        "context": {
+            "island": {
+                "source": "deterministic-visual-context",
+                "gameplaySurface": False,
+                "landAlpha": "1 means generated island land; 0 means visual-only surrounding water",
+            },
+            "water": {
+                "source": "deterministic-visual-context",
+                "gameplaySurface": False,
+                "mask": "context-water-mask.png",
+            },
         },
         "lighting": {
             "azimuthDegrees": 305,
@@ -247,11 +269,11 @@ def terrain_normal(
     step: float,
     surface: SurfaceId,
 ) -> tuple[float, float, float]:
-    _ = classify
-    left = surface_terrain_height(hole, dtm, x - step, y, surface)
-    right = surface_terrain_height(hole, dtm, x + step, y, surface)
-    down = surface_terrain_height(hole, dtm, x, y - step, surface)
-    up = surface_terrain_height(hole, dtm, x, y + step, surface)
+    _ = (hole, classify)
+    left = dtm.sample(x - step, y)
+    right = dtm.sample(x + step, y)
+    down = dtm.sample(x, y - step)
+    up = dtm.sample(x, y + step)
     base = normalize3((-(right - left), 2.0 * step, -(up - down)))
     detail_strength = {
         "out_of_bounds": 0.11,
@@ -279,7 +301,7 @@ def soft_feature_mask(features: list[Feature], x: float, y: float, edge_width: f
 
 def edge_ambient_occlusion(features_by_surface: dict[str, list[Feature]], x: float, y: float) -> float:
     occlusion = 1.0
-    for surface, strength in (("fairway", 0.08), ("green", 0.07), ("tee", 0.06), ("bunker", 0.18)):
+    for surface, strength in (("green", 0.07), ("tee", 0.06), ("bunker", 0.18)):
         for feature in features_by_surface[surface]:
             if not point_in_feature_bbox(x, y, feature, 3.0):
                 continue

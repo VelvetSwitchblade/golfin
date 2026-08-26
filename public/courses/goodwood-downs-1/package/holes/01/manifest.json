@@ -11,9 +11,12 @@
     "maxY": 196.034
   },
   "terrainEnvelope": {
-    "kind": "expanded-island-skirt",
+    "kind": "generated-island-context",
     "paddingMetres": 42.0,
-    "waterline": "visual-context-only",
+    "landRadiusMetres": 34.0,
+    "shoreBlendMetres": 8.0,
+    "waterDropMetres": 1.65,
+    "waterline": "generated-visual-context-only",
     "courseFeaturePolicy": "does-not-create-gameplay-water"
   },
   "assets": {

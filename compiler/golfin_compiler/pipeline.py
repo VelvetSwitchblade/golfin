@@ -13,7 +13,7 @@ from .geometry import bounds, distance_to_polygon, line_length, point_in_polygon
 from .geometry_enrichment import prepare_imported_geometry
 from .glb import write_terrain_glb
 from .materials import export_material_maps
-from .mesh import TerrainMesh, build_adaptive_mesh
+from .mesh import ISLAND_LAND_RADIUS_METRES, ISLAND_SHORE_BLEND_METRES, ISLAND_WATER_DROP_METRES, TerrainMesh, build_adaptive_mesh
 from .model import CourseModel, Feature, HoleModel, Provenance, SurfaceId, to_plain_json
 from .render_package import export_render_package
 from .surfaces import SURFACE_IDS, SURFACE_PHYSICS
@@ -150,6 +150,7 @@ def validate_course(course: CourseModel, dtm: DTMGrid | None = None, mesh: Terra
                 check("terrain-mesh-generated", mesh is not None and mesh.stats["triangles"] > 0, True),
                 check("adaptive-mesh-generated", mesh is not None and mesh.stats["adaptive"] == 1, True),
                 check("terrain-envelope-expanded", mesh is not None and mesh.stats.get("envelopePaddingMetres", 0) >= TERRAIN_ENVELOPE_PADDING_METRES, True),
+                check("visual-context-island-generated", mesh is not None and mesh.stats.get("visualContextIsland", 0) == 1, True),
             ]
         )
 
@@ -366,9 +367,12 @@ def package_attributions(course: CourseModel, dtm: DTMGrid) -> list[str]:
 
 def terrain_envelope_metadata() -> dict[str, Any]:
     return {
-        "kind": "expanded-island-skirt",
+        "kind": "generated-island-context",
         "paddingMetres": TERRAIN_ENVELOPE_PADDING_METRES,
-        "waterline": "visual-context-only",
+        "landRadiusMetres": ISLAND_LAND_RADIUS_METRES,
+        "shoreBlendMetres": ISLAND_SHORE_BLEND_METRES,
+        "waterDropMetres": ISLAND_WATER_DROP_METRES,
+        "waterline": "generated-visual-context-only",
         "courseFeaturePolicy": "does-not-create-gameplay-water",
     }
 

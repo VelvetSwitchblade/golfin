@@ -51,7 +51,7 @@ The browser should never need to understand GIS formats. It should load:
 
 Generated scenery can enhance mapped features, but must not create gameplay-significant bunkers, water, walls, buildings, or landmark trees that are not present in source data. If a hole has no mapped water, the compiled package must have no water.
 
-The compiler may generate non-gameplay visual context around a hole, such as an island-style terrain envelope, so long as it is clearly labelled as render context and not exported as mapped course geometry.
+The compiler may generate non-gameplay visual context around a hole, such as an island silhouette and surrounding visual water, so long as it is clearly labelled as render context and not exported as mapped course geometry.
 
 ## Runtime Contract
 
@@ -84,7 +84,7 @@ The terrain mesh should represent the playable lie, not just a flat visual overl
 
 - bunkers are signed-distance depressions, shallow near the border and deeper toward the interior
 - greens and tees get subtle elevation treatment for clean lie surfaces
-- out-of-bounds terrain falls away into an expanded island-style envelope
+- out-of-bounds terrain falls away through a generated island shoreline
 - the envelope is render context only and must not bypass the no-synthetic-water rule
 
 ## Baked Render Package
@@ -98,6 +98,7 @@ The current package shape is:
 - `render/terrain-light.png`: baked global-light hillshade and edge ambient occlusion
 - `render/terrain-height.png`: normalized DTM height plate
 - `render/material-mask.png`: high-resolution RGBA masks for material blending
+- `render/context-water-mask.png`: visual-only surrounding water mask generated from the island silhouette
 - `render/surface-id.r8`: exact high-resolution semantic lookup map
 - `render/manifest.json`: provenance, dimensions, lighting, inputs, and asset references
 

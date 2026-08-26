@@ -48,6 +48,7 @@ The current compiler exports:
 - `render/terrain-light.png`: global-light hillshade/ambient plate for lightweight runtime compositing
 - `render/terrain-height.png`: normalized height plate from the DTM
 - `render/material-mask.png`: high-resolution blend masks for rough, fairway, green/tee, and bunker materials
+- `render/context-water-mask.png`: visual-only water surrounding the generated island silhouette
 - `render/surface-id.r8`: high-resolution exact surface ID map for inspector/runtime lookup
 - `validation.json`: mapping/elevation/mesh QA checks
 
@@ -62,9 +63,9 @@ Imported golf polygons are now prepared before package generation:
 - fairway, green, tee, and bunker polygons are densified, smoothed, and slightly inflated to remove brittle source geometry corners
 - each prepared feature records its original/prepared vertex counts, area change, smoothing settings, and bounds under `properties.compilerGeometry`
 - bunker mesh height is a signed-distance depression: shallow at the lip and deeper toward the interior
-- the terrain mesh uses an expanded island-style envelope around the hole so the runtime has contextual ground beyond the playing corridor
+- the terrain mesh uses a generated island silhouette around the hole so the runtime has contextual ground, shoreline falloff, and visual-only water beyond the playing corridor
 
-The island envelope is visual context only. It does not add water or any other gameplay-significant feature when the source data does not contain it.
+The island envelope is visual context only. It does not add water or any other gameplay-significant course feature when the source data does not contain it.
 
 ## Real Elevation Fixture
 

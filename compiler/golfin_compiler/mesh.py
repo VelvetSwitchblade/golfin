@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from math import sqrt
+from math import sin, sqrt
 
 from .dtm import DTMGrid
 from .geometry import distance_to_segment, point_in_polygon
@@ -10,6 +10,9 @@ from .pipeline_types import SurfaceClassifier
 from .surfaces import SURFACE_IDS
 
 ROUGH_COLLAR_METRES = 21.6
+ISLAND_LAND_RADIUS_METRES = 34.0
+ISLAND_SHORE_BLEND_METRES = 8.0
+ISLAND_WATER_DROP_METRES = 1.65
 
 
 @dataclass(frozen=True)
@@ -106,6 +109,10 @@ def build_adaptive_mesh(
             "adaptive": 1,
             "envelopePaddingMetres": envelope_padding,
             "terrainEnvelope": 1,
+            "visualContextIsland": 1,
+            "islandLandRadiusMetres": ISLAND_LAND_RADIUS_METRES,
+            "islandShoreBlendMetres": ISLAND_SHORE_BLEND_METRES,
+            "islandWaterDropMetres": ISLAND_WATER_DROP_METRES,
         },
     )
 
@@ -125,10 +132,9 @@ def surface_terrain_height(hole: HoleModel, dtm: DTMGrid, x: float, y: float, su
         height += 0.12
     elif surface == "water":
         height -= 0.25
-    elif surface == "out_of_bounds":
-        height -= island_skirt_drop(hole, x, y)
     if surface != "bunker":
         height += bunker_lip_height(hole, x, y)
+    height -= island_context_drop(hole, x, y)
     return height
 
 
@@ -158,18 +164,37 @@ def bunker_lip_height(hole: HoleModel, x: float, y: float) -> float:
     return smoothstep(1.8, 0.15, distance) * 0.11
 
 
-def island_skirt_drop(hole: HoleModel, x: float, y: float) -> float:
-    playable = [feature for feature in hole.features if feature.surface in {"fairway", "green", "tee"}]
-    if not playable:
-        return 0.0
-    nearby = [feature for feature in playable if point_in_feature_bbox(x, y, feature, ROUGH_COLLAR_METRES + 30.0)]
+def island_land_alpha(hole: HoleModel, x: float, y: float) -> float:
+    features = island_source_features(hole)
+    if not features:
+        return 1.0
+
+    search_padding = ISLAND_LAND_RADIUS_METRES + ISLAND_SHORE_BLEND_METRES + 7.0
+    nearby = [feature for feature in features if point_in_feature_bbox(x, y, feature, search_padding)]
     if not nearby:
-        return 1.15
+        return 0.0
+
     distance = min(
         0.0 if point_in_polygon(x, y, feature.geometry) else distance_to_polygon_edge(x, y, feature.geometry)
         for feature in nearby
     )
-    return smoothstep(ROUGH_COLLAR_METRES, ROUGH_COLLAR_METRES + 26.0, distance) * 1.15
+    edge = ISLAND_LAND_RADIUS_METRES + island_edge_noise(x, y)
+    return 1.0 - smoothstep(edge, edge + ISLAND_SHORE_BLEND_METRES, distance)
+
+
+def island_context_drop(hole: HoleModel, x: float, y: float) -> float:
+    return (1.0 - island_land_alpha(hole, x, y)) * ISLAND_WATER_DROP_METRES
+
+
+def island_source_features(hole: HoleModel) -> list[Feature]:
+    return [feature for feature in hole.features if feature.surface in {"fairway", "green", "tee", "bunker"}]
+
+
+def island_edge_noise(x: float, y: float) -> float:
+    return (
+        sin(x * 0.075 + y * 0.031)
+        + sin(x * -0.041 + y * 0.087 + 2.1) * 0.55
+    ) * 2.8
 
 
 def point_in_feature_bbox(x: float, y: float, feature: Feature, padding: float) -> bool:

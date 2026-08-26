@@ -11,7 +11,11 @@
     "baseCellsY": 144,
     "adaptive": 1,
     "envelopePaddingMetres": 42.0,
-    "terrainEnvelope": 1
+    "terrainEnvelope": 1,
+    "visualContextIsland": 1,
+    "islandLandRadiusMetres": 34.0,
+    "islandShoreBlendMetres": 8.0,
+    "islandWaterDropMetres": 1.65
   },
   "checks": [
     {
@@ -94,6 +98,12 @@
     },
     {
       "name": "terrain-envelope-expanded",
+      "status": "pass",
+      "mandatory": true,
+      "weight": 4
+    },
+    {
+      "name": "visual-context-island-generated",
       "status": "pass",
       "mandatory": true,
       "weight": 4
