@@ -33,6 +33,7 @@ class CompilerPipelineTest(unittest.TestCase):
             self.assertTrue((Path(tmp) / "holes" / "01" / "materials.json").exists())
             self.assertTrue((Path(tmp) / "holes" / "01" / "surface-id.png").exists())
             self.assertTrue((Path(tmp) / "holes" / "01" / "surface.r8").exists())
+            self.assertTrue((Path(tmp) / "holes" / "01" / "render" / "manifest.json").exists())
 
             validation = json.loads((Path(tmp) / "holes" / "01" / "validation.json").read_text())
             self.assertEqual(validation["elevationStatus"], "connected")
@@ -50,6 +51,27 @@ class CompilerPipelineTest(unittest.TestCase):
             self.assertFalse(any(feature["id"].startswith("synthetic-water:") for feature in gameplay["features"]))
             self.assertIn("no-procedural-course-features", {check["name"] for check in validation["checks"]})
             self.assertIn("no-procedural-water", {check["name"] for check in validation["checks"]})
+            manifest = json.loads((Path(tmp) / "holes" / "01" / "manifest.json").read_text())
+            self.assertEqual(manifest["assets"]["renderPackage"], "render/manifest.json")
+            render_manifest = json.loads((Path(tmp) / "holes" / "01" / "render" / "manifest.json").read_text())
+            self.assertEqual(render_manifest["schema"], "golfin.render-package.v0")
+            self.assertEqual(render_manifest["sourcePolicy"], "compiled-geometry-dtm-material-bake")
+            self.assertEqual(render_manifest["inputs"]["elevation"]["source"], "Environment Agency LIDAR Composite DTM 1m")
+            self.assertGreater(render_manifest["height"], render_manifest["width"])
+            for asset in render_manifest["assets"].values():
+                self.assertTrue((Path(tmp) / "holes" / "01" / "render" / asset).exists())
+            self.assertEqual(
+                png_size(Path(tmp) / "holes" / "01" / "render" / "terrain-albedo.png"),
+                (render_manifest["width"], render_manifest["height"]),
+            )
+            self.assertEqual(
+                png_size(Path(tmp) / "holes" / "01" / "render" / "terrain-normal.png"),
+                (render_manifest["width"], render_manifest["height"]),
+            )
+            self.assertEqual(
+                len((Path(tmp) / "holes" / "01" / "render" / "surface-id.r8").read_bytes()),
+                render_manifest["width"] * render_manifest["height"],
+            )
 
     def test_validation_rejects_procedural_water_as_course_geometry(self) -> None:
         course = CourseModel(
@@ -160,6 +182,13 @@ class CompilerPipelineTest(unittest.TestCase):
             self.assertEqual(dtm.height, 2)
             self.assertAlmostEqual(dtm.sample(0, 0), 10)
             self.assertGreater(dtm.sample(5, 5), 10)
+
+
+def png_size(path: Path) -> tuple[int, int]:
+    data = path.read_bytes()
+    if data[:8] != b"\x89PNG\r\n\x1a\n":
+        raise AssertionError(f"{path} is not a PNG")
+    return (int.from_bytes(data[16:20], "big"), int.from_bytes(data[20:24], "big"))
 
 
 if __name__ == "__main__":

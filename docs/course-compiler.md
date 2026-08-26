@@ -21,7 +21,8 @@ real-world data
   -> elevation evaluation
   -> master terrain
   -> semantic surface map
-  -> visual enrichment
+  -> baked render package
+  -> visual enrichment instances
   -> collision generation
   -> optimization and budgets
   -> automated QA
@@ -61,6 +62,22 @@ Every compiled hole should expose one shared semantic classification. The same s
 
 Visual transitions may be softened with distance fields, edge noise, and material blending, but gameplay boundaries remain exact and inspectable.
 
+## Baked Render Package
+
+The compiler should emit a player-facing render package before the runtime tries to make the hole look polished. This package is generated from normalized geometry, real elevation, and deterministic material rules.
+
+The current package shape is:
+
+- `render/terrain-albedo.png`: baked base colour from OOB, rough, fairway, green, tee, bunker, and water materials
+- `render/terrain-normal.png`: terrain/material normal map derived from DTM gradients
+- `render/terrain-light.png`: baked global-light hillshade and edge ambient occlusion
+- `render/terrain-height.png`: normalized DTM height plate
+- `render/material-mask.png`: high-resolution RGBA masks for material blending
+- `render/surface-id.r8`: exact high-resolution semantic lookup map
+- `render/manifest.json`: provenance, dimensions, lighting, inputs, and asset references
+
+This is the backend direction for realism: improve the compiler's source data, masks, materials, lighting, and bake quality first; then make the game viewer a thin consumer of those assets.
+
 ## First Milestone
 
 The current milestone is intentionally small:
@@ -71,6 +88,7 @@ The current milestone is intentionally small:
 - export gameplay/collision metadata from the same surface IDs
 - ingest a DTM raster adapter and generate adaptive `terrain.glb` / `collision.glb`
 - export material maps and a KTX2 compressor hook
+- export a baked render package for the runtime to display
 - leave the existing browser prototype loading compiled assets from `public/courses/goodwood-downs-1/`
 
-The next milestone should replace the transitional legacy source with a real OSM ingestion stage and add an inspector view with `RAW OSM`, `SEMANTIC`, `TERRAIN`, `MATERIAL`, `VEGETATION`, `COLLISION`, and `FINAL` modes.
+The next milestone should replace the transitional legacy source with a real OSM ingestion stage, add real texture-source ingestion/compression, and add an inspector view with `RAW OSM`, `SEMANTIC`, `TERRAIN`, `MATERIAL`, `VEGETATION`, `COLLISION`, and `FINAL` modes.

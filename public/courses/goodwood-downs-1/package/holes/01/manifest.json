@@ -18,6 +18,7 @@
     "surfaceTexture": "surface-id.png",
     "surfaceTextureRaw": "surface.r8",
     "materials": "materials.json",
+    "renderPackage": "render/manifest.json",
     "gameplay": "gameplay.json",
     "collision": "collision.json",
     "validation": "validation.json"

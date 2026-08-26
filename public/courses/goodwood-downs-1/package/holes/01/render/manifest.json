@@ -1,0 +1,56 @@
+{
+  "schema": "golfin.render-package.v0",
+  "sourcePolicy": "compiled-geometry-dtm-material-bake",
+  "units": "metres",
+  "bounds": {
+    "minX": 42.86,
+    "minY": -7.433999999999999,
+    "maxX": 112.261,
+    "maxY": 211.851
+  },
+  "width": 256,
+  "height": 768,
+  "metresPerPixel": {
+    "x": 0.27109765625,
+    "y": 0.28552734375
+  },
+  "inputs": {
+    "surfaceMap": "../surface-map.json",
+    "terrainMesh": "../terrain.glb",
+    "elevation": {
+      "source": "Environment Agency LIDAR Composite DTM 1m",
+      "sourceId": "13787b9a-26a4-4775-8523-806d13af58fc__Lidar_Composite_Elevation_DTM_1m:94ad2aa63bd522b3",
+      "format": "esri-ascii-grid",
+      "width": 72,
+      "height": 221,
+      "cellSizeMetres": 1.0,
+      "fidelity": 94
+    }
+  },
+  "assets": {
+    "albedo": "terrain-albedo.png",
+    "normal": "terrain-normal.png",
+    "light": "terrain-light.png",
+    "height": "terrain-height.png",
+    "materialMask": "material-mask.png",
+    "surfaceId": "surface-id.r8",
+    "preview": "terrain-preview.png"
+  },
+  "lighting": {
+    "azimuthDegrees": 305,
+    "elevationDegrees": 46,
+    "space": "local-hole"
+  },
+  "materialChannels": {
+    "materialMask": {
+      "r": "rough",
+      "g": "fairway",
+      "b": "green_or_tee",
+      "a": "bunker"
+    }
+  },
+  "notes": [
+    "Gameplay classification is exact; render masks use signed-distance and deterministic edge noise for visual blending.",
+    "This is a backend render plate for the runtime to consume, not live canvas decoration."
+  ]
+}

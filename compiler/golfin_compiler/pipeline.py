@@ -14,6 +14,7 @@ from .glb import write_terrain_glb
 from .materials import export_material_maps
 from .mesh import TerrainMesh, build_adaptive_mesh
 from .model import CourseModel, Feature, HoleModel, Provenance, SurfaceId, to_plain_json
+from .render_package import export_render_package
 from .surfaces import SURFACE_IDS, SURFACE_PHYSICS
 
 ROUGH_COLLAR_METRES = 21.6
@@ -28,7 +29,7 @@ def compile_legacy_goodwood(source_path: Path, output_dir: Path, dtm_path: Path 
     dtm = load_dtm(dtm_path)
     build_id = deterministic_build_id(course, dtm)
     output = build_hole_package(course, build_id, dtm)
-    write_package(output_dir, output)
+    write_package(output_dir, output, course.holes[0], dtm)
     report = output["hole"]["validation"]
     return {
         "course": course.course_id,
@@ -228,6 +229,7 @@ def build_hole_package(course: CourseModel, build_id: str, dtm: DTMGrid) -> dict
                     "surfaceTexture": "surface-id.png",
                     "surfaceTextureRaw": "surface.r8",
                     "materials": "materials.json",
+                    "renderPackage": "render/manifest.json",
                     "gameplay": "gameplay.json",
                     "collision": "collision.json",
                     "validation": "validation.json",
@@ -338,7 +340,7 @@ def package_attributions(course: CourseModel, dtm: DTMGrid) -> list[str]:
     return list(dict.fromkeys(attributions))
 
 
-def write_package(output_dir: Path, output: dict[str, Any]) -> None:
+def write_package(output_dir: Path, output: dict[str, Any], hole: HoleModel | None = None, dtm: DTMGrid | None = None) -> None:
     hole_dir = output_dir / "holes" / "01"
     hole_dir.mkdir(parents=True, exist_ok=True)
     terrain_mesh = output["hole"]["terrainMesh"]
@@ -352,6 +354,8 @@ def write_package(output_dir: Path, output: dict[str, Any]) -> None:
     write_terrain_glb(hole_dir / "terrain.glb", terrain_mesh)
     write_terrain_glb(hole_dir / "collision.glb", terrain_mesh)
     export_material_maps(hole_dir, output["hole"]["surfaceMap"])
+    if hole and dtm:
+        export_render_package(hole_dir / "render", hole, output["hole"]["surfaceMap"], dtm, classify_surface)
 
 
 def source_path_fingerprint(source: dict[str, Any]) -> str:
