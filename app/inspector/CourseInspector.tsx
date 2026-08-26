@@ -236,12 +236,12 @@ const materialColors: Record<SurfaceName, string> = {
 };
 
 const renderDetailMaterials: Partial<Record<SurfaceName, { albedo: string; scaleMetres: number }>> = {
-  out_of_bounds: { albedo: `${localMaterialRoot}/out_of_bounds/albedo.png`, scaleMetres: 16 },
-  rough: { albedo: `${localMaterialRoot}/rough/albedo.png`, scaleMetres: 12 },
-  fairway: { albedo: `${localMaterialRoot}/fairway/albedo.png`, scaleMetres: 10 },
-  green: { albedo: `${localMaterialRoot}/green/albedo.png`, scaleMetres: 7 },
-  tee: { albedo: `${localMaterialRoot}/tee/albedo.png`, scaleMetres: 8 },
-  bunker: { albedo: `${localMaterialRoot}/bunker/albedo.png`, scaleMetres: 5 },
+  out_of_bounds: { albedo: `${localMaterialRoot}/out_of_bounds/albedo.png`, scaleMetres: 52 },
+  rough: { albedo: `${localMaterialRoot}/rough/albedo.png`, scaleMetres: 44 },
+  fairway: { albedo: `${localMaterialRoot}/fairway/albedo.png`, scaleMetres: 39 },
+  green: { albedo: `${localMaterialRoot}/green/albedo.png`, scaleMetres: 28 },
+  tee: { albedo: `${localMaterialRoot}/tee/albedo.png`, scaleMetres: 28 },
+  bunker: { albedo: `${localMaterialRoot}/bunker/albedo.png`, scaleMetres: 14 },
 };
 
 const modeDescriptions: Record<InspectorMode, string> = {
@@ -751,7 +751,7 @@ function drawRenderDetailMaterials(
 ) {
   context.save();
   context.globalCompositeOperation = "soft-light";
-  context.globalAlpha = 0.28;
+  context.globalAlpha = 0.5;
 
   for (const feature of data.gameplay.features) {
     const material = renderDetailMaterials[feature.surface];

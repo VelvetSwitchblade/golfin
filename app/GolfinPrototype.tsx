@@ -248,8 +248,8 @@ const grassTextureSpecs: Record<Exclude<Surface["name"], "bunker">, GrassTexture
     brightness: 1.08,
     contrast: 1.1,
     bumpStrength: 1.16,
-    tileSize: 512,
-    tileWorldSize: 57,
+    tileSize: 1024,
+    tileWorldSize: 220,
   },
   green: {
     albedoSrc: "/courses/goodwood-downs-1/package/holes/01/render/material-library/local/green/albedo.png",
@@ -260,8 +260,8 @@ const grassTextureSpecs: Record<Exclude<Surface["name"], "bunker">, GrassTexture
     brightness: 1.18,
     contrast: 0.82,
     bumpStrength: 0.42,
-    tileSize: 512,
-    tileWorldSize: 40,
+    tileSize: 1024,
+    tileWorldSize: 160,
   },
   heavy: {
     albedoSrc: "/courses/goodwood-downs-1/package/holes/01/render/material-library/local/out_of_bounds/albedo.png",
@@ -272,8 +272,8 @@ const grassTextureSpecs: Record<Exclude<Surface["name"], "bunker">, GrassTexture
     brightness: 0.84,
     contrast: 1.28,
     bumpStrength: 1.44,
-    tileSize: 512,
-    tileWorldSize: 91,
+    tileSize: 1024,
+    tileWorldSize: 300,
   },
   rough: {
     albedoSrc: "/courses/goodwood-downs-1/package/holes/01/render/material-library/local/rough/albedo.png",
@@ -284,8 +284,8 @@ const grassTextureSpecs: Record<Exclude<Surface["name"], "bunker">, GrassTexture
     brightness: 0.95,
     contrast: 1.22,
     bumpStrength: 1.32,
-    tileSize: 512,
-    tileWorldSize: 68,
+    tileSize: 1024,
+    tileWorldSize: 250,
   },
   tee: {
     albedoSrc: "/courses/goodwood-downs-1/package/holes/01/render/material-library/local/tee/albedo.png",
@@ -296,8 +296,8 @@ const grassTextureSpecs: Record<Exclude<Surface["name"], "bunker">, GrassTexture
     brightness: 1.12,
     contrast: 0.96,
     bumpStrength: 0.72,
-    tileSize: 512,
-    tileWorldSize: 46,
+    tileSize: 1024,
+    tileWorldSize: 160,
   },
 };
 
@@ -2027,14 +2027,14 @@ function drawCompiledCloseSurfaceDetail(
   }
 
   ctx.save();
-  ctx.globalAlpha = 0.42 * detailAmount;
+  ctx.globalAlpha = 0.3 * detailAmount;
   ctx.globalCompositeOperation = "soft-light";
   drawMaintainedRough(ctx, sx, sy, scale);
   drawSurfacePolygons(ctx, sx, sy, scale);
   ctx.restore();
 
   ctx.save();
-  ctx.globalAlpha = 0.26 * detailAmount;
+  ctx.globalAlpha = 0.64 * detailAmount;
   ctx.globalCompositeOperation = "source-over";
   drawSurfaceTextures(ctx, sx, sy, scale);
   ctx.restore();
