@@ -4,9 +4,12 @@ from dataclasses import dataclass
 from math import sqrt
 
 from .dtm import DTMGrid
-from .model import HoleModel, SurfaceId
+from .geometry import distance_to_segment, point_in_polygon
+from .model import Feature, HoleModel, SurfaceId
 from .pipeline_types import SurfaceClassifier
 from .surfaces import SURFACE_IDS
+
+ROUGH_COLLAR_METRES = 21.6
 
 
 @dataclass(frozen=True)
@@ -25,6 +28,7 @@ def build_adaptive_mesh(
     classify: SurfaceClassifier,
     base_cells_x: int = 96,
     base_cells_y: int = 144,
+    envelope_padding: float = 42.0,
 ) -> TerrainMesh:
     vertices: list[tuple[float, float, float]] = []
     normals: list[tuple[float, float, float]] = []
@@ -100,22 +104,103 @@ def build_adaptive_mesh(
             "baseCellsX": base_cells_x,
             "baseCellsY": base_cells_y,
             "adaptive": 1,
+            "envelopePaddingMetres": envelope_padding,
+            "terrainEnvelope": 1,
         },
     )
 
 
 def terrain_height(hole: HoleModel, classify: SurfaceClassifier, dtm: DTMGrid, x: float, y: float) -> float:
     surface = classify(hole, x, y)
+    return surface_terrain_height(hole, dtm, x, y, surface)
+
+
+def surface_terrain_height(hole: HoleModel, dtm: DTMGrid, x: float, y: float, surface: SurfaceId) -> float:
     height = dtm.sample(x, y)
     if surface == "bunker":
-        height -= 0.45
+        height -= bunker_depth(hole, x, y)
     elif surface == "green":
         height += 0.08
     elif surface == "tee":
         height += 0.12
     elif surface == "water":
         height -= 0.25
+    elif surface == "out_of_bounds":
+        height -= island_skirt_drop(hole, x, y)
+    if surface != "bunker":
+        height += bunker_lip_height(hole, x, y)
     return height
+
+
+def bunker_depth(hole: HoleModel, x: float, y: float) -> float:
+    bunkers = [feature for feature in hole.features if feature.surface == "bunker"]
+    if not bunkers:
+        return 0.0
+    inside_distances = [
+        distance_to_polygon_edge(x, y, feature.geometry)
+        for feature in bunkers
+        if point_in_polygon(x, y, feature.geometry)
+    ]
+    if not inside_distances:
+        return 0.0
+    distance = min(inside_distances)
+    return 0.14 + smoothstep(0.0, 4.8, distance) * 0.72
+
+
+def bunker_lip_height(hole: HoleModel, x: float, y: float) -> float:
+    bunkers = [feature for feature in hole.features if feature.surface == "bunker"]
+    if not bunkers:
+        return 0.0
+    nearby = [feature for feature in bunkers if point_in_feature_bbox(x, y, feature, 2.0)]
+    if not nearby:
+        return 0.0
+    distance = min(distance_to_polygon_edge(x, y, feature.geometry) for feature in nearby)
+    return smoothstep(1.8, 0.15, distance) * 0.11
+
+
+def island_skirt_drop(hole: HoleModel, x: float, y: float) -> float:
+    playable = [feature for feature in hole.features if feature.surface in {"fairway", "green", "tee"}]
+    if not playable:
+        return 0.0
+    nearby = [feature for feature in playable if point_in_feature_bbox(x, y, feature, ROUGH_COLLAR_METRES + 30.0)]
+    if not nearby:
+        return 1.15
+    distance = min(
+        0.0 if point_in_polygon(x, y, feature.geometry) else distance_to_polygon_edge(x, y, feature.geometry)
+        for feature in nearby
+    )
+    return smoothstep(ROUGH_COLLAR_METRES, ROUGH_COLLAR_METRES + 26.0, distance) * 1.15
+
+
+def point_in_feature_bbox(x: float, y: float, feature: Feature, padding: float) -> bool:
+    stored_bounds = feature.properties.get("compilerGeometry", {}).get("bounds")
+    if isinstance(stored_bounds, dict):
+        min_x = float(stored_bounds["minX"]) - padding
+        max_x = float(stored_bounds["maxX"]) + padding
+        min_y = float(stored_bounds["minY"]) - padding
+        max_y = float(stored_bounds["maxY"]) + padding
+        return min_x <= x <= max_x and min_y <= y <= max_y
+
+    geometry = feature.geometry
+    min_x = min(point[0] for point in geometry) - padding
+    max_x = max(point[0] for point in geometry) + padding
+    min_y = min(point[1] for point in geometry) - padding
+    max_y = max(point[1] for point in geometry) + padding
+    return min_x <= x <= max_x and min_y <= y <= max_y
+
+
+def distance_to_polygon_edge(x: float, y: float, polygon: list[tuple[float, float]]) -> float:
+    return min(
+        distance_to_segment(x, y, start[0], start[1], end[0], end[1])
+        for start, end in zip(polygon, polygon[1:] + polygon[:1])
+    )
+
+
+def smoothstep(edge0: float, edge1: float, value: float) -> float:
+    if edge0 == edge1:
+        return 1.0 if value >= edge1 else 0.0
+    amount = max(0.0, min(1.0, (value - edge0) / (edge1 - edge0)))
+    return amount * amount * (3.0 - 2.0 * amount)
 
 
 def target_cell_size(surface: SurfaceId) -> int:

@@ -17,6 +17,7 @@ OpenStreetMap and elevation data decide what exists and where it is. The compile
 real-world data
   -> source ingestion
   -> normalized course model
+  -> imported geometry preparation
   -> topology validation
   -> elevation evaluation
   -> master terrain
@@ -50,6 +51,8 @@ The browser should never need to understand GIS formats. It should load:
 
 Generated scenery can enhance mapped features, but must not create gameplay-significant bunkers, water, walls, buildings, or landmark trees that are not present in source data. If a hole has no mapped water, the compiled package must have no water.
 
+The compiler may generate non-gameplay visual context around a hole, such as an island-style terrain envelope, so long as it is clearly labelled as render context and not exported as mapped course geometry.
+
 ## Runtime Contract
 
 Every compiled hole should expose one shared semantic classification. The same surface ID drives:
@@ -61,6 +64,28 @@ Every compiled hole should expose one shared semantic classification. The same s
 - collision interpretation
 
 Visual transitions may be softened with distance fields, edge noise, and material blending, but gameplay boundaries remain exact and inspectable.
+
+## Geometry Preparation
+
+OSM golf polygons are a source of truth, but they are not always game-ready outlines. The compiler should produce a deterministic prepared geometry layer before terrain/collision/render export.
+
+The current preparation stage:
+
+- densifies long polygon segments
+- applies light Chaikin smoothing to fairways, greens, tees, and bunkers
+- slightly inflates those surfaces to compensate for corner cutting
+- records the operation under `properties.compilerGeometry` for inspection
+
+Prepared geometry is still derived from the imported course data. It should not create new bunkers, greens, water, or other gameplay-significant features.
+
+## Terrain Shaping
+
+The terrain mesh should represent the playable lie, not just a flat visual overlay. The current terrain shaping rules are:
+
+- bunkers are signed-distance depressions, shallow near the border and deeper toward the interior
+- greens and tees get subtle elevation treatment for clean lie surfaces
+- out-of-bounds terrain falls away into an expanded island-style envelope
+- the envelope is render context only and must not bypass the no-synthetic-water rule
 
 ## Baked Render Package
 

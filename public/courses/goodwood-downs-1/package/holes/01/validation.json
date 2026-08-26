@@ -1,15 +1,17 @@
 {
   "approved": true,
   "premiumReady": true,
-  "mappingFidelity": 98,
+  "mappingFidelity": 99,
   "elevationFidelity": 94,
   "elevationStatus": "connected",
   "terrainMesh": {
-    "vertices": 8504,
-    "triangles": 14084,
+    "vertices": 7629,
+    "triangles": 12428,
     "baseCellsX": 96,
     "baseCellsY": 144,
-    "adaptive": 1
+    "adaptive": 1,
+    "envelopePaddingMetres": 42.0,
+    "terrainEnvelope": 1
   },
   "checks": [
     {
@@ -86,6 +88,12 @@
     },
     {
       "name": "adaptive-mesh-generated",
+      "status": "pass",
+      "mandatory": true,
+      "weight": 4
+    },
+    {
+      "name": "terrain-envelope-expanded",
       "status": "pass",
       "mandatory": true,
       "weight": 4

@@ -6,8 +6,10 @@ The compiler owns:
 
 - source provenance
 - normalized course and hole models
+- deterministic imported-geometry preparation
 - topology/fidelity scoring
 - surface classification maps
+- terrain shaping
 - gameplay physics maps
 - collision packages
 - asset manifests
@@ -52,6 +54,17 @@ The current compiler exports:
 The checked-in Goodwood Downs DTM fixture is generated from the Environment Agency LIDAR Composite DTM 1m WCS. It gives the compiler a real elevation source while the wider ingestion pipeline is still being built out.
 
 The render package is deliberately compiler-owned. It is the bridge between real course data and a lightweight game renderer: gameplay boundaries remain exact, while visual transitions use signed-distance masks and deterministic edge noise. Future scanned textures, KTX2 compression, vegetation sprites, water banks, and tree shadows should plug into this package rather than being hand-painted in the runtime.
+
+## Geometry And Terrain Shaping
+
+Imported golf polygons are now prepared before package generation:
+
+- fairway, green, tee, and bunker polygons are densified, smoothed, and slightly inflated to remove brittle source geometry corners
+- each prepared feature records its original/prepared vertex counts, area change, smoothing settings, and bounds under `properties.compilerGeometry`
+- bunker mesh height is a signed-distance depression: shallow at the lip and deeper toward the interior
+- the terrain mesh uses an expanded island-style envelope around the hole so the runtime has contextual ground beyond the playing corridor
+
+The island envelope is visual context only. It does not add water or any other gameplay-significant feature when the source data does not contain it.
 
 ## Real Elevation Fixture
 

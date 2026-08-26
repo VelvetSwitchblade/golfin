@@ -8,7 +8,7 @@ from pathlib import Path
 
 from golfin_compiler.dtm import read_ascii_grid
 from golfin_compiler.dtm import DTMGrid
-from golfin_compiler.mesh import TerrainMesh
+from golfin_compiler.mesh import TerrainMesh, terrain_height
 from golfin_compiler.model import CourseModel, Feature, HoleModel, Provenance
 from golfin_compiler.pipeline import build_surface_map, compile_legacy_goodwood, normalize_legacy_hole, validate_course
 
@@ -40,6 +40,7 @@ class CompilerPipelineTest(unittest.TestCase):
             self.assertTrue(validation["premiumReady"])
             self.assertGreaterEqual(validation["elevationFidelity"], 85)
             self.assertGreater(validation["terrainMesh"]["triangles"], 0)
+            self.assertEqual(validation["terrainMesh"]["envelopePaddingMetres"], 42.0)
             course = json.loads((Path(tmp) / "course.json").read_text())
             self.assertEqual(course["elevation"]["source"], "Environment Agency LIDAR Composite DTM 1m")
             self.assertEqual(course["elevation"]["cellSizeMetres"], 1.0)
@@ -53,6 +54,8 @@ class CompilerPipelineTest(unittest.TestCase):
             self.assertIn("no-procedural-water", {check["name"] for check in validation["checks"]})
             manifest = json.loads((Path(tmp) / "holes" / "01" / "manifest.json").read_text())
             self.assertEqual(manifest["assets"]["renderPackage"], "render/manifest.json")
+            self.assertEqual(manifest["terrainEnvelope"]["kind"], "expanded-island-skirt")
+            self.assertEqual(manifest["terrainEnvelope"]["courseFeaturePolicy"], "does-not-create-gameplay-water")
             render_manifest = json.loads((Path(tmp) / "holes" / "01" / "render" / "manifest.json").read_text())
             self.assertEqual(render_manifest["schema"], "golfin.render-package.v0")
             self.assertEqual(render_manifest["sourcePolicy"], "compiled-geometry-dtm-material-bake")
@@ -154,9 +157,62 @@ class CompilerPipelineTest(unittest.TestCase):
         cells = base64.b64decode(surface_map["data"])
 
         self.assertEqual(len(cells), 32 * 48)
+        self.assertEqual(surface_map["paddingMetres"], 42.0)
         self.assertIn(2, cells)
         self.assertIn(3, cells)
         self.assertIn(5, cells)
+
+    def test_imported_geometry_is_prepared_for_mesh_generation(self) -> None:
+        source = Path("public/courses/goodwood-downs-1/hole.json")
+        course = normalize_legacy_hole(json.loads(source.read_text()))
+        prepared = [
+            feature
+            for feature in course.holes[0].features
+            if feature.surface in {"fairway", "green", "tee", "bunker"}
+        ]
+
+        self.assertTrue(prepared)
+        for feature in prepared:
+            compiler_geometry = feature.properties["compilerGeometry"]
+            self.assertEqual(compiler_geometry["source"], "deterministic-import-preparation")
+            self.assertGreater(compiler_geometry["verticesAfter"], compiler_geometry["verticesBefore"])
+            self.assertGreater(compiler_geometry["areaAfterSquareMetres"], 2.0)
+
+    def test_bunker_mesh_height_deepens_away_from_border(self) -> None:
+        hole = HoleModel(
+            id="bunker-depth",
+            number=1,
+            par=3,
+            yards=120,
+            tee=(0, 0),
+            pin=(0, 100),
+            centreline=[(0, 0), (0, 100)],
+            features=[
+                Feature(
+                    id="osm:bunker",
+                    surface="bunker",
+                    geometry=[(0, 0), (10, 0), (10, 10), (0, 10), (0, 0)],
+                    provenance=Provenance(source="osm", source_id="bunker", confidence=1),
+                )
+            ],
+        )
+        dtm = DTMGrid(
+            source="dtm",
+            source_id="test-dtm",
+            width=2,
+            height=2,
+            x_origin=-20,
+            y_origin=-20,
+            cell_size=80,
+            nodata=-9999,
+            values=[10, 10, 10, 10],
+        )
+        classify = lambda _hole, x, y: "bunker" if 0 <= x <= 10 and 0 <= y <= 10 else "out_of_bounds"
+
+        edge_height = terrain_height(hole, classify, dtm, 0.1, 5)
+        centre_height = terrain_height(hole, classify, dtm, 5, 5)
+
+        self.assertLess(centre_height, edge_height - 0.45)
 
     def test_ascii_dtm_reader_samples_height(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

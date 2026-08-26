@@ -10,6 +10,7 @@ from typing import Any
 from . import __version__
 from .dtm import DTMGrid, read_ascii_grid
 from .geometry import bounds, distance_to_polygon, line_length, point_in_polygon, polygon_area
+from .geometry_enrichment import prepare_imported_geometry
 from .glb import write_terrain_glb
 from .materials import export_material_maps
 from .mesh import TerrainMesh, build_adaptive_mesh
@@ -18,6 +19,7 @@ from .render_package import export_render_package
 from .surfaces import SURFACE_IDS, SURFACE_PHYSICS
 
 ROUGH_COLLAR_METRES = 21.6
+TERRAIN_ENVELOPE_PADDING_METRES = 42.0
 SURFACE_PRIORITY: list[SurfaceId] = ["water", "bunker", "green", "tee", "fairway"]
 DEFAULT_DTM_PATH = Path("compiler/fixtures/goodwood-downs-1-dtm.asc")
 GAMEPLAY_SIGNIFICANT_SURFACES: set[SurfaceId] = {"water", "bunker", "green", "tee", "fairway"}
@@ -87,6 +89,7 @@ def normalize_legacy_hole(source: dict[str, Any]) -> CourseModel:
         centreline=[metres(point) for point in source["holeLine"]],
         features=features,
     )
+    prepared_hole = prepare_imported_geometry(hole)
 
     return CourseModel(
         course_id=source.get("courseId", "goodwood"),
@@ -95,7 +98,7 @@ def normalize_legacy_hole(source: dict[str, Any]) -> CourseModel:
         units="metres",
         origin={"lat": None, "lon": None, "elevation": None},
         biome="temperate_parkland",
-        holes=[hole],
+        holes=[prepared_hole],
         source_versions={
             "sourceHole": source_path_fingerprint(source),
             **({"osmExtract": source["source"]["extractHash"]} if source.get("source", {}).get("extractHash") else {}),
@@ -146,6 +149,7 @@ def validate_course(course: CourseModel, dtm: DTMGrid | None = None, mesh: Terra
                 check("dtm-connected", dtm is not None, True),
                 check("terrain-mesh-generated", mesh is not None and mesh.stats["triangles"] > 0, True),
                 check("adaptive-mesh-generated", mesh is not None and mesh.stats["adaptive"] == 1, True),
+                check("terrain-envelope-expanded", mesh is not None and mesh.stats.get("envelopePaddingMetres", 0) >= TERRAIN_ENVELOPE_PADDING_METRES, True),
             ]
         )
 
@@ -196,7 +200,7 @@ def build_hole_package(course: CourseModel, build_id: str, dtm: DTMGrid) -> dict
     surface_map = build_surface_map(hole)
     feature_bounds = bounds([feature.geometry for feature in hole.features])
     padded_bounds = surface_map["bounds"]
-    terrain_mesh = build_adaptive_mesh(hole, padded_bounds, dtm, classify_surface)
+    terrain_mesh = build_adaptive_mesh(hole, padded_bounds, dtm, classify_surface, envelope_padding=TERRAIN_ENVELOPE_PADDING_METRES)
     report = validate_course(course, dtm, terrain_mesh)
 
     return {
@@ -221,6 +225,7 @@ def build_hole_package(course: CourseModel, build_id: str, dtm: DTMGrid) -> dict
                 "immutable": True,
                 "sourcePolicy": "authoritative-geometry-procedural-rendering",
                 "bounds": feature_bounds,
+                "terrainEnvelope": terrain_envelope_metadata(),
                 "assets": {
                     "terrainMesh": "terrain.glb",
                     "collisionMesh": "collision.glb",
@@ -263,7 +268,8 @@ def build_hole_package(course: CourseModel, build_id: str, dtm: DTMGrid) -> dict
                     "kind": "adaptive-heightfield-mesh",
                     "mesh": "collision.glb",
                     "elevationSource": dtm.metadata(),
-                    "note": "Terrain/collision mesh is generated from the DTM adapter and semantic surface map.",
+                    "envelope": terrain_envelope_metadata(),
+                    "note": "Terrain/collision mesh is generated from the DTM adapter and semantic surface map. Imported polygons are prepared deterministically before mesh generation.",
                 },
                 "surfaceBounds": [
                     {
@@ -282,7 +288,7 @@ def build_hole_package(course: CourseModel, build_id: str, dtm: DTMGrid) -> dict
 
 def build_surface_map(hole: HoleModel, width: int = 128, height: int = 178) -> dict[str, Any]:
     all_bounds = bounds([feature.geometry for feature in hole.features])
-    padding = 16.0
+    padding = TERRAIN_ENVELOPE_PADDING_METRES
     min_x = all_bounds["minX"] - padding
     min_y = all_bounds["minY"] - padding
     max_x = all_bounds["maxX"] + padding
@@ -303,6 +309,7 @@ def build_surface_map(hole: HoleModel, width: int = 128, height: int = 178) -> d
         "width": width,
         "height": height,
         "bounds": {"minX": min_x, "minY": min_y, "maxX": max_x, "maxY": max_y},
+        "paddingMetres": padding,
         "encoding": "uint8-base64-row-major",
         "surfaceIds": SURFACE_IDS,
         "data": base64.b64encode(bytes(cells)).decode("ascii"),
@@ -313,21 +320,38 @@ def classify_surface(hole: HoleModel, x: float, y: float) -> SurfaceId:
     by_surface = {surface: [feature for feature in hole.features if feature.surface == surface] for surface in SURFACE_IDS}
 
     for surface in SURFACE_PRIORITY:
-        if any(point_in_polygon(x, y, feature.geometry) for feature in by_surface[surface]):
+        if any(point_in_feature_bounds(x, y, feature, 0.0) and point_in_polygon(x, y, feature.geometry) for feature in by_surface[surface]):
             return surface
 
     playable = by_surface["fairway"] + by_surface["green"] + by_surface["tee"]
-    if playable and min(distance_to_polygon(x, y, feature.geometry) for feature in playable) <= ROUGH_COLLAR_METRES:
+    nearby_playable = [feature for feature in playable if point_in_feature_bounds(x, y, feature, ROUGH_COLLAR_METRES)]
+    if nearby_playable and min(distance_to_polygon(x, y, feature.geometry) for feature in nearby_playable) <= ROUGH_COLLAR_METRES:
         return "rough"
 
     return "out_of_bounds"
+
+
+def point_in_feature_bounds(x: float, y: float, feature: Feature, padding: float) -> bool:
+    stored_bounds = feature.properties.get("compilerGeometry", {}).get("bounds")
+    if isinstance(stored_bounds, dict):
+        min_x = float(stored_bounds["minX"]) - padding
+        max_x = float(stored_bounds["maxX"]) + padding
+        min_y = float(stored_bounds["minY"]) - padding
+        max_y = float(stored_bounds["maxY"]) + padding
+        return min_x <= x <= max_x and min_y <= y <= max_y
+
+    min_x = min(point[0] for point in feature.geometry) - padding
+    max_x = max(point[0] for point in feature.geometry) + padding
+    min_y = min(point[1] for point in feature.geometry) - padding
+    max_y = max(point[1] for point in feature.geometry) + padding
+    return min_x <= x <= max_x and min_y <= y <= max_y
 
 
 def collision_kind(surface: SurfaceId) -> str:
     if surface == "water":
         return "trigger"
     if surface == "bunker":
-        return "terrain-depression-placeholder"
+        return "signed-distance-terrain-depression"
     return "surface-polygon"
 
 
@@ -338,6 +362,15 @@ def package_attributions(course: CourseModel, dtm: DTMGrid) -> list[str]:
             "Elevation data: \u00a9 Environment Agency copyright and/or database right 2022. Licensed under the Open Government Licence."
         )
     return list(dict.fromkeys(attributions))
+
+
+def terrain_envelope_metadata() -> dict[str, Any]:
+    return {
+        "kind": "expanded-island-skirt",
+        "paddingMetres": TERRAIN_ENVELOPE_PADDING_METRES,
+        "waterline": "visual-context-only",
+        "courseFeaturePolicy": "does-not-create-gameplay-water",
+    }
 
 
 def write_package(output_dir: Path, output: dict[str, Any], hole: HoleModel | None = None, dtm: DTMGrid | None = None) -> None:

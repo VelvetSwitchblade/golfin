@@ -1,14 +1,20 @@
 {
   "schema": "golfin.hole-package.v0",
   "compiler": "0.1.0",
-  "build": "ed652347d30b72df",
+  "build": "661db3ee7c92b65d",
   "immutable": true,
   "sourcePolicy": "authoritative-geometry-procedural-rendering",
   "bounds": {
-    "minX": 58.86,
-    "minY": 8.566,
-    "maxX": 96.261,
-    "maxY": 195.851
+    "minX": 58.623,
+    "minY": 8.178,
+    "maxX": 96.364,
+    "maxY": 196.034
+  },
+  "terrainEnvelope": {
+    "kind": "expanded-island-skirt",
+    "paddingMetres": 42.0,
+    "waterline": "visual-context-only",
+    "courseFeaturePolicy": "does-not-create-gameplay-water"
   },
   "assets": {
     "terrainMesh": "terrain.glb",

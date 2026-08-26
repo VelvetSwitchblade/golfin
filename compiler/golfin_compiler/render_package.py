@@ -7,12 +7,13 @@ from pathlib import Path
 from .dtm import DTMGrid
 from .geometry import distance_to_segment, point_in_polygon
 from .materials import write_png
+from .mesh import point_in_feature_bbox, surface_terrain_height
 from .model import Feature, HoleModel, SurfaceId
 from .pipeline_types import SurfaceClassifier
 from .surfaces import SURFACE_IDS
 
 ROUGH_COLLAR_METRES = 21.6
-RENDER_TARGET_HEIGHT = 768
+RENDER_TARGET_HEIGHT = 512
 
 Point = tuple[float, float]
 
@@ -62,8 +63,8 @@ def export_render_package(
             surface = classify(hole, x, y)
             surface_raw[index] = SURFACE_IDS[surface]
 
-            masks = material_masks(hole, features_by_surface, x, y)
-            h = visual_height(surface, dtm.sample(x, y))
+            masks = material_masks(features_by_surface, x, y, surface)
+            h = surface_terrain_height(hole, dtm, x, y, surface)
             n = terrain_normal(hole, classify, dtm, x, y, max(metres_per_pixel_x, metres_per_pixel_y), surface)
             hillshade = clamp(0.48 + 0.52 * dot3(n, light_dir), 0.0, 1.0)
             ambient_edge = edge_ambient_occlusion(features_by_surface, x, y)
@@ -143,10 +144,10 @@ def export_render_package(
 
 
 def material_masks(
-    hole: HoleModel,
     features_by_surface: dict[str, list[Feature]],
     x: float,
     y: float,
+    surface: SurfaceId,
 ) -> dict[str, float]:
     edge_noise = fbm(x * 0.55, y * 0.55, 3) - 0.5
     fairway = soft_feature_mask(features_by_surface["fairway"], x, y, 1.2, edge_noise)
@@ -154,7 +155,8 @@ def material_masks(
     tee = soft_feature_mask(features_by_surface["tee"], x, y, 0.8, edge_noise)
     bunker = soft_feature_mask(features_by_surface["bunker"], x, y, 0.75, edge_noise)
     water = soft_feature_mask(features_by_surface["water"], x, y, 0.8, edge_noise)
-    rough = rough_mask(hole, features_by_surface, x, y, max(fairway, green, tee, bunker, water))
+    rough = 1.0 if surface == "rough" else 0.0
+    rough *= 1.0 - max(fairway, green, tee, bunker, water) * 0.82
     return {
         "out_of_bounds": clamp(1.0 - rough, 0.0, 1.0),
         "rough": rough,
@@ -236,18 +238,6 @@ def water_color(x: float, y: float) -> tuple[int, int, int]:
     )
 
 
-def visual_height(surface: SurfaceId, height: float) -> float:
-    if surface == "bunker":
-        return height - 0.45
-    if surface == "green":
-        return height + 0.08
-    if surface == "tee":
-        return height + 0.12
-    if surface == "water":
-        return height - 0.25
-    return height
-
-
 def terrain_normal(
     hole: HoleModel,
     classify: SurfaceClassifier,
@@ -257,11 +247,11 @@ def terrain_normal(
     step: float,
     surface: SurfaceId,
 ) -> tuple[float, float, float]:
-    _ = (hole, classify)
-    left = dtm.sample(x - step, y)
-    right = dtm.sample(x + step, y)
-    down = dtm.sample(x, y - step)
-    up = dtm.sample(x, y + step)
+    _ = classify
+    left = surface_terrain_height(hole, dtm, x - step, y, surface)
+    right = surface_terrain_height(hole, dtm, x + step, y, surface)
+    down = surface_terrain_height(hole, dtm, x, y - step, surface)
+    up = surface_terrain_height(hole, dtm, x, y + step, surface)
     base = normalize3((-(right - left), 2.0 * step, -(up - down)))
     detail_strength = {
         "out_of_bounds": 0.11,
@@ -280,33 +270,19 @@ def terrain_normal(
 def soft_feature_mask(features: list[Feature], x: float, y: float, edge_width: float, edge_noise: float) -> float:
     if not features:
         return 0.0
-    signed = min(signed_distance_to_polygon(x, y, feature.geometry) for feature in features)
-    return 1.0 - smoothstep(-edge_width, edge_width, signed + edge_noise * edge_width * 0.65)
-
-
-def rough_mask(
-    hole: HoleModel,
-    features_by_surface: dict[str, list[Feature]],
-    x: float,
-    y: float,
-    gameplay_surfaces: float,
-) -> float:
-    playable = features_by_surface["fairway"] + features_by_surface["green"] + features_by_surface["tee"]
-    if not playable:
+    nearby = [feature for feature in features if point_in_feature_bbox(x, y, feature, edge_width * 3.0)]
+    if not nearby:
         return 0.0
-    distance = min(
-        0.0 if point_in_polygon(x, y, feature.geometry) else distance_to_polygon_exact(x, y, feature.geometry)
-        for feature in playable
-    )
-    noisy_distance = distance + (fbm(x * 0.31, y * 0.31, 4) - 0.5) * 2.0
-    collar = 1.0 - smoothstep(ROUGH_COLLAR_METRES - 2.0, ROUGH_COLLAR_METRES + 3.0, noisy_distance)
-    return clamp(collar * (1.0 - gameplay_surfaces * 0.82), 0.0, 1.0)
+    signed = min(signed_distance_to_polygon(x, y, feature.geometry) for feature in nearby)
+    return 1.0 - smoothstep(-edge_width, edge_width, signed + edge_noise * edge_width * 0.65)
 
 
 def edge_ambient_occlusion(features_by_surface: dict[str, list[Feature]], x: float, y: float) -> float:
     occlusion = 1.0
     for surface, strength in (("fairway", 0.08), ("green", 0.07), ("tee", 0.06), ("bunker", 0.18)):
         for feature in features_by_surface[surface]:
+            if not point_in_feature_bbox(x, y, feature, 3.0):
+                continue
             signed = signed_distance_to_polygon(x, y, feature.geometry)
             edge = 1.0 - smoothstep(0.1, 2.6, abs(signed))
             if surface == "bunker" and signed < 0:

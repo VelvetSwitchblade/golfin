@@ -3,16 +3,16 @@
   "sourcePolicy": "compiled-geometry-dtm-material-bake",
   "units": "metres",
   "bounds": {
-    "minX": 42.86,
-    "minY": -7.433999999999999,
-    "maxX": 112.261,
-    "maxY": 211.851
+    "minX": 16.622999999999998,
+    "minY": -33.822,
+    "maxX": 138.364,
+    "maxY": 238.034
   },
   "width": 256,
-  "height": 768,
+  "height": 512,
   "metresPerPixel": {
-    "x": 0.27109765625,
-    "y": 0.28552734375
+    "x": 0.47555078125000005,
+    "y": 0.53096875
   },
   "inputs": {
     "surfaceMap": "../surface-map.json",
