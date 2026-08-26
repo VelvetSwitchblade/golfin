@@ -239,69 +239,67 @@ const materials: Record<Surface["name"], Surface> = {
 };
 
 const courseAssetBase = "/courses/goodwood-downs-1";
-const localMaterialVersion = "close-detail-v3";
-const localMaterialBase = `${courseAssetBase}/package/holes/01/render/material-library/local`;
 
 const grassTextureSpecs: Record<Exclude<Surface["name"], "bunker">, GrassTextureSpec> = {
   fairway: {
-    albedoSrc: `${localMaterialBase}/fairway/albedo.png?v=${localMaterialVersion}`,
-    heightSrc: `${localMaterialBase}/fairway/height.png?v=${localMaterialVersion}`,
+    albedoSrc: "/textures/grass/Grass005_1K-JPG_Color.jpg",
+    heightSrc: "/textures/grass/Grass005_1K-JPG_Displacement.jpg",
     fallback: [66, 146, 72],
     tint: [92, 176, 72],
     tintStrength: 0.46,
     brightness: 1.08,
     contrast: 1.1,
     bumpStrength: 1.16,
-    tileSize: 1024,
-    tileWorldSize: 220,
+    tileSize: 192,
+    tileWorldSize: 150,
   },
   green: {
-    albedoSrc: `${localMaterialBase}/green/albedo.png?v=${localMaterialVersion}`,
-    heightSrc: `${localMaterialBase}/green/height.png?v=${localMaterialVersion}`,
+    albedoSrc: "/textures/grass/Grass006_1K-JPG_Color.jpg",
+    heightSrc: "/textures/grass/Grass006_1K-JPG_Displacement.jpg",
     fallback: [94, 181, 91],
     tint: [126, 214, 99],
     tintStrength: 0.58,
     brightness: 1.18,
     contrast: 0.82,
     bumpStrength: 0.42,
-    tileSize: 1024,
-    tileWorldSize: 160,
+    tileSize: 192,
+    tileWorldSize: 120,
   },
   heavy: {
-    albedoSrc: `${localMaterialBase}/out_of_bounds/albedo.png?v=${localMaterialVersion}`,
-    heightSrc: `${localMaterialBase}/out_of_bounds/height.png?v=${localMaterialVersion}`,
+    albedoSrc: "/textures/grass/Grass001_1K-JPG_Color.jpg",
+    heightSrc: "/textures/grass/Grass001_1K-JPG_Displacement.jpg",
     fallback: [31, 91, 50],
     tint: [40, 104, 49],
     tintStrength: 0.34,
     brightness: 0.84,
     contrast: 1.28,
     bumpStrength: 1.44,
-    tileSize: 1024,
-    tileWorldSize: 300,
+    tileSize: 224,
+    tileWorldSize: 190,
   },
   rough: {
-    albedoSrc: `${localMaterialBase}/rough/albedo.png?v=${localMaterialVersion}`,
-    heightSrc: `${localMaterialBase}/rough/height.png?v=${localMaterialVersion}`,
+    albedoSrc: "/textures/grass/Grass008_1K-JPG_Color.jpg",
+    heightSrc: "/textures/grass/Grass008_1K-JPG_Displacement.jpg",
     fallback: [42, 116, 59],
     tint: [54, 132, 61],
     tintStrength: 0.4,
     brightness: 0.95,
     contrast: 1.22,
     bumpStrength: 1.32,
-    tileSize: 1024,
-    tileWorldSize: 250,
+    tileSize: 224,
+    tileWorldSize: 170,
   },
   tee: {
-    albedoSrc: `${localMaterialBase}/tee/albedo.png?v=${localMaterialVersion}`,
-    heightSrc: `${localMaterialBase}/tee/height.png?v=${localMaterialVersion}`,
+    albedoSrc: "/textures/grass/Grass005_1K-JPG_Color.jpg",
+    heightSrc: "/textures/grass/Grass005_1K-JPG_Displacement.jpg",
     fallback: [87, 166, 86],
     tint: [105, 190, 85],
     tintStrength: 0.5,
     brightness: 1.12,
     contrast: 0.96,
     bumpStrength: 0.72,
-    tileSize: 1024,
-    tileWorldSize: 160,
+    tileSize: 192,
+    tileWorldSize: 125,
   },
 };
 
@@ -586,28 +584,6 @@ function terrainImage(src: string) {
 
 function imageReady(image: HTMLImageElement) {
   return image.complete && image.naturalWidth > 0;
-}
-
-function materialDebugEnabled() {
-  return typeof window !== "undefined" && new URLSearchParams(window.location.search).has("debugMaterials");
-}
-
-function localMaterialLoadSummary() {
-  const sources = Object.values(grassTextureSpecs).flatMap((spec) => [spec.albedoSrc, spec.heightSrc]);
-  const loaded = sources.filter((src) => imageReady(textureImage(src))).length;
-  return `${loaded}/${sources.length}`;
-}
-
-function drawMaterialDebugHud(ctx: CanvasRenderingContext2D) {
-  ctx.save();
-  ctx.font = "12px monospace";
-  ctx.textBaseline = "top";
-  ctx.fillStyle = "rgba(5, 20, 12, 0.82)";
-  ctx.fillRect(12, 88, 262, 48);
-  ctx.fillStyle = "#eaffd8";
-  ctx.fillText(`material detail: ${localMaterialVersion}`, 22, 98);
-  ctx.fillText(`loaded local maps: ${localMaterialLoadSummary()}`, 22, 116);
-  ctx.restore();
 }
 
 function createFallbackGrassPattern(
@@ -2039,39 +2015,6 @@ function drawSurfaceTextures(
   }
 }
 
-function drawCompiledCloseSurfaceDetail(
-  ctx: CanvasRenderingContext2D,
-  sx: (value: number) => number,
-  sy: (value: number) => number,
-  scale: number,
-  timestamp: number,
-) {
-  const detailAmount = materialDebugEnabled() ? 1 : clamp((scale - 0.75) / 0.45, 0, 1);
-  if (detailAmount <= 0) {
-    return;
-  }
-
-  ctx.save();
-  ctx.globalAlpha = 0.3 * detailAmount;
-  ctx.globalCompositeOperation = "soft-light";
-  drawMaintainedRough(ctx, sx, sy, scale);
-  drawSurfacePolygons(ctx, sx, sy, scale);
-  ctx.restore();
-
-  ctx.save();
-  ctx.globalAlpha = 0.92 * detailAmount;
-  ctx.globalCompositeOperation = "source-over";
-  drawSurfaceTextures(ctx, sx, sy, scale);
-  ctx.restore();
-
-  if (renderRules.drawWindSheen) {
-    ctx.save();
-    ctx.globalAlpha = 0.45 * detailAmount;
-    drawWindGrassSheen(ctx, sx, sy, scale, timestamp);
-    ctx.restore();
-  }
-}
-
 function drawTrees(
   ctx: CanvasRenderingContext2D,
   sx: (value: number) => number,
@@ -2529,12 +2472,8 @@ export function GolfinPrototype() {
       ctx.globalCompositeOperation = "destination-over";
       drawCompiledWaterBackdrop(ctx, width, height);
       ctx.globalCompositeOperation = "source-over";
-      drawCompiledCloseSurfaceDetail(ctx, sx, sy, camera.zoom, timestamp);
       drawAtmosphere(ctx, width, height);
       drawPin(ctx, sx, sy, camera.zoom);
-      if (materialDebugEnabled()) {
-        drawMaterialDebugHud(ctx);
-      }
     } else if (terrainRendered) {
       drawAtmosphere(ctx, width, height);
       drawPin(ctx, sx, sy, camera.zoom);

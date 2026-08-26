@@ -8,7 +8,6 @@ const execFile = promisify(execFileCallback);
 
 const archive = process.argv[2] ?? "/Users/jordan/Desktop/Texture/Archive.zip";
 const compilerOutputRoot = "compiler/material-library/local";
-const runtimeOutputRoot = "public/courses/goodwood-downs-1/package/holes/01/render/material-library/local";
 const textureSize = Number(process.env.GOLFIN_MATERIAL_SIZE ?? 1024);
 
 const materialSpecs = {
@@ -88,7 +87,6 @@ const allowedImage = /\.(png|jpe?g|tiff?)$/i;
 async function main() {
   const entries = await listArchiveEntries();
   await mkdir(compilerOutputRoot, { recursive: true });
-  await mkdir(runtimeOutputRoot, { recursive: true });
 
   const manifest = {
     schema: "golfin.local-material-library.v0",
@@ -102,9 +100,7 @@ async function main() {
   for (const [materialId, spec] of Object.entries(materialSpecs)) {
     const materialEntries = entries.filter((entry) => entry.startsWith(`${spec.directory}/`) && allowedImage.test(entry));
     const outputDirectory = join(compilerOutputRoot, materialId);
-    const runtimeOutputDirectory = join(runtimeOutputRoot, materialId);
     await mkdir(outputDirectory, { recursive: true });
-    await mkdir(runtimeOutputDirectory, { recursive: true });
 
     const channels = {};
     const sourceEntries = {};
@@ -116,8 +112,7 @@ async function main() {
 
       const outputName = `${channel}.png`;
       const input = await readArchiveEntry(entry);
-      await writeRuntimeTexture(input, join(outputDirectory, outputName));
-      await writeRuntimeTexture(input, join(runtimeOutputDirectory, outputName));
+      await writeCompilerTexture(input, join(outputDirectory, outputName));
       channels[channel] = `${materialId}/${outputName}`;
       sourceEntries[channel] = entry;
     }
@@ -134,12 +129,10 @@ async function main() {
   }
 
   await writeFile(join(compilerOutputRoot, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
-  await writeFile(join(runtimeOutputRoot, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
   console.log(
     JSON.stringify(
       {
         compilerOutput: compilerOutputRoot,
-        runtimeOutput: runtimeOutputRoot,
         textureSize,
         materials: Object.keys(manifest.materials),
       },
@@ -149,7 +142,7 @@ async function main() {
   );
 }
 
-async function writeRuntimeTexture(input, outputPath) {
+async function writeCompilerTexture(input, outputPath) {
   await sharp(input)
     .rotate()
     .resize({ width: textureSize, height: textureSize, fit: "cover" })
