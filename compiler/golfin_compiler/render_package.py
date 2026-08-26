@@ -11,6 +11,7 @@ from .mesh import island_land_alpha, point_in_feature_bbox, surface_terrain_heig
 from .model import Feature, HoleModel, SurfaceId
 from .pipeline_types import SurfaceClassifier
 from .surfaces import SURFACE_IDS
+from .texture_library import MaterialLibrary, load_material_library, material_library_fingerprint
 
 ROUGH_COLLAR_METRES = 21.6
 RENDER_TARGET_HEIGHT = 512
@@ -49,7 +50,8 @@ def export_render_package(
     surface_raw = bytearray(width * height)
     surface_preview = bytearray(width * height * 4)
     land_preview = bytearray(width * height * 4)
-    context_water_fill = create_context_water_fill()
+    material_library = load_material_library()
+    context_water_fill = create_context_water_fill(material_library)
 
     height_min, height_max = height_range(dtm)
     light_dir = normalize3((-0.38, 0.72, -0.58))
@@ -71,14 +73,17 @@ def export_render_package(
             land_alpha = island_land_alpha(hole, x, y)
             context_water = 1.0 - land_alpha
             h = surface_terrain_height(hole, dtm, x, y, surface)
-            n = terrain_normal(hole, classify, dtm, x, y, max(metres_per_pixel_x, metres_per_pixel_y), surface)
+            material_surface = dominant_material_surface(surface, masks)
+            visual_height = h + material_height_offset(material_library, material_surface, x, y)
+            n = terrain_normal(hole, classify, dtm, x, y, max(metres_per_pixel_x, metres_per_pixel_y), surface, material_library)
             hillshade = clamp(0.48 + 0.52 * dot3(n, light_dir), 0.0, 1.0)
             ambient_edge = edge_ambient_occlusion(features_by_surface, x, y)
-            shade = clamp(hillshade * ambient_edge, 0.2, 1.18)
-            land_color = terrain_color(surface, masks, x, y, h)
+            material_ao = material_ambient_occlusion(material_library, masks, surface, x, y)
+            shade = clamp(hillshade * ambient_edge * material_ao, 0.2, 1.18)
+            land_color = terrain_color(surface, masks, x, y, visual_height, material_library)
             color = land_color
             if context_water > 0.01:
-                water = water_color(x, y)
+                water = water_color(x, y, material_library)
                 color = tuple(clamp_int(mix(water[channel], color[channel], land_alpha)) for channel in range(3))
             shaded = tuple(clamp_int(channel * shade) for channel in color)
             land_shaded = tuple(clamp_int(channel * shade) for channel in land_color)
@@ -128,6 +133,7 @@ def export_render_package(
             "surfaceMap": "../surface-map.json",
             "terrainMesh": "../terrain.glb",
             "elevation": dtm.metadata(),
+            "materialLibrary": material_library_fingerprint(),
         },
         "assets": {
             "albedo": "terrain-albedo.png",
@@ -169,6 +175,7 @@ def export_render_package(
         "notes": [
             "Gameplay classification is exact; render masks use signed-distance and deterministic edge noise for visual blending.",
             "This is a backend render plate for the runtime to consume, not live canvas decoration.",
+            "If compiler/material-library/local/manifest.json exists, scanned local PBR materials are sampled into the baked render assets.",
         ],
     }
     (render_dir / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
@@ -201,23 +208,40 @@ def material_masks(
 
 
 def terrain_color(
-    _surface: SurfaceId,
+    surface: SurfaceId,
     masks: dict[str, float],
     x: float,
     y: float,
     elevation: float,
+    material_library: MaterialLibrary | None,
 ) -> tuple[int, int, int]:
-    base = list(material_grass((28, 73, 33), x, y, elevation, 1.35, 0.2))
+    base_color = sampled_material_color(material_library, "out_of_bounds", x, y, elevation)
+    if base_color is None:
+        base_color = material_grass((28, 73, 33), x, y, elevation, 1.35, 0.2)
+    base = list(base_color)
+    if surface == "out_of_bounds":
+        return tuple(clamp_int(channel) for channel in base)
+
     for key in ("rough", "fairway", "tee", "green", "bunker", "water"):
         amount = masks[key]
         if amount <= 0.01:
             continue
-        color = material_color(key, x, y, elevation)
+        color = material_color(key, x, y, elevation, material_library)
         base = [mix(base[channel], color[channel], amount) for channel in range(3)]
     return tuple(clamp_int(channel) for channel in base)
 
 
-def material_color(surface: str, x: float, y: float, elevation: float) -> tuple[int, int, int]:
+def material_color(
+    surface: str,
+    x: float,
+    y: float,
+    elevation: float,
+    material_library: MaterialLibrary | None,
+) -> tuple[int, int, int]:
+    sampled = sampled_material_color(material_library, surface, x, y, elevation)
+    if sampled:
+        return sampled
+
     if surface == "rough":
         return material_grass((59, 112, 44), x, y, elevation, 1.0, 0.15)
     if surface == "fairway":
@@ -229,8 +253,64 @@ def material_color(surface: str, x: float, y: float, elevation: float) -> tuple[
     if surface == "bunker":
         return bunker_sand(x, y)
     if surface == "water":
-        return water_color(x, y)
+        return water_color(x, y, material_library)
     return material_grass((28, 73, 33), x, y, elevation, 1.35, 0.2)
+
+
+def sampled_material_color(
+    material_library: MaterialLibrary | None,
+    surface: str,
+    x: float,
+    y: float,
+    elevation: float,
+) -> tuple[int, int, int] | None:
+    if surface == "water":
+        return None
+    if not material_library:
+        return None
+    sampled = material_library.sample_color(surface, x, y)
+    if not sampled:
+        return None
+
+    if surface in {"out_of_bounds", "rough", "fairway", "green", "tee"}:
+        return graded_grass_texture(surface, sampled, x, y, elevation)
+
+    brightness = {"bunker": 1.0}.get(surface, 1.0)
+    texture_tone = 1.0 + (fbm(x * 0.09, y * 0.09, 3) - 0.5) * 0.08 + math.sin(elevation * 0.7) * 0.018
+    return tuple(clamp_int(channel * brightness * texture_tone) for channel in sampled)
+
+
+def graded_grass_texture(
+    surface: str,
+    sampled: tuple[int, int, int],
+    x: float,
+    y: float,
+    elevation: float,
+) -> tuple[int, int, int]:
+    target = {
+        "out_of_bounds": (36, 91, 39),
+        "rough": (58, 118, 47),
+        "fairway": (111, 169, 55),
+        "green": (136, 197, 74),
+        "tee": (120, 181, 67),
+    }[surface]
+    tint_strength = {
+        "out_of_bounds": 0.84,
+        "rough": 0.9,
+        "fairway": 0.55,
+        "green": 0.68,
+        "tee": 0.68,
+    }[surface]
+    luma = sampled[0] * 0.2126 + sampled[1] * 0.7152 + sampled[2] * 0.0722
+    detail = clamp((luma - 128.0) / 128.0, -1.0, 1.0)
+    texture_tone = 1.0 + detail * 0.34 + (fbm(x * 0.09, y * 0.09, 3) - 0.5) * 0.08 + math.sin(elevation * 0.7) * 0.018
+    hue_corrected = tuple(clamp_int(channel * texture_tone) for channel in target)
+    graded = tuple(clamp_int(mix(sampled[channel], hue_corrected[channel], tint_strength)) for channel in range(3))
+    if surface == "fairway":
+        stripe = math.sin((x * 0.22 + y * 0.04) * math.pi)
+        stripe_amount = 0.075 if stripe > 0 else -0.045
+        return tuple(clamp_int(channel * (1.0 + stripe_amount)) for channel in graded)
+    return graded
 
 
 def material_grass(
@@ -261,7 +341,11 @@ def bunker_sand(x: float, y: float) -> tuple[int, int, int]:
     return tuple(clamp_int(channel * (1.0 + ripple + grain)) for channel in (198, 166, 99))
 
 
-def water_color(x: float, y: float) -> tuple[int, int, int]:
+def water_color(x: float, y: float, material_library: MaterialLibrary | None = None) -> tuple[int, int, int]:
+    sampled = sampled_material_color(material_library, "water", x, y, 0.0)
+    if sampled:
+        return sampled
+
     ripple = math.sin(x * 0.8 + y * 1.35) * 0.08 + math.sin(x * 2.1 - y * 0.5) * 0.04
     return (
         clamp_int(24 * (1.0 + ripple)),
@@ -270,7 +354,7 @@ def water_color(x: float, y: float) -> tuple[int, int, int]:
     )
 
 
-def create_context_water_fill() -> bytearray:
+def create_context_water_fill(material_library: MaterialLibrary | None = None) -> bytearray:
     pixels = bytearray(CONTEXT_WATER_TILE_SIZE * CONTEXT_WATER_TILE_SIZE * 4)
     size = CONTEXT_WATER_TILE_SIZE
     for py in range(size):
@@ -284,12 +368,13 @@ def create_context_water_fill() -> bytearray:
             )
             glint = max(0.0, math.sin((u * 3.0 - v * 2.0) * math.tau)) ** 9
             tone = caustic * 0.045 + glint * 0.1
+            color = water_color(u * 18.0, v * 18.0, material_library)
             index = (py * size + px) * 4
             pixels[index : index + 4] = bytes(
                 (
-                    clamp_int(22 * (1.0 + tone)),
-                    clamp_int(113 * (1.0 + tone)),
-                    clamp_int(146 * (1.0 + tone * 1.25)),
+                    clamp_int(color[0] * (1.0 + tone)),
+                    clamp_int(color[1] * (1.0 + tone)),
+                    clamp_int(color[2] * (1.0 + tone * 1.25)),
                     255,
                 )
             )
@@ -304,6 +389,7 @@ def terrain_normal(
     y: float,
     step: float,
     surface: SurfaceId,
+    material_library: MaterialLibrary | None = None,
 ) -> tuple[float, float, float]:
     _ = (hole, classify)
     left = dtm.sample(x - step, y)
@@ -322,7 +408,60 @@ def terrain_normal(
     }[surface]
     detail_x = (value_noise(x * 2.8 + 13.1, y * 2.8) - 0.5) * detail_strength
     detail_z = (value_noise(x * 2.8, y * 2.8 - 11.7) - 0.5) * detail_strength
+    sampled_normal = material_library.sample_normal_xy(surface, x, y) if material_library else None
+    if sampled_normal:
+        detail_x += sampled_normal[0]
+        detail_z += sampled_normal[1]
     return normalize3((base[0] + detail_x, base[1], base[2] + detail_z))
+
+
+def dominant_material_surface(surface: SurfaceId, masks: dict[str, float]) -> str:
+    if surface == "out_of_bounds":
+        return "out_of_bounds"
+    ranked = sorted(((amount, key) for key, amount in masks.items()), reverse=True)
+    amount, key = ranked[0]
+    return key if amount > 0.01 else surface
+
+
+def material_height_offset(
+    material_library: MaterialLibrary | None,
+    surface: str,
+    x: float,
+    y: float,
+) -> float:
+    if not material_library:
+        return 0.0
+    return material_library.sample_height(surface, x, y) or 0.0
+
+
+def material_ambient_occlusion(
+    material_library: MaterialLibrary | None,
+    masks: dict[str, float],
+    surface: SurfaceId,
+    x: float,
+    y: float,
+) -> float:
+    if not material_library:
+        return 1.0
+
+    weighted = 0.0
+    total = 0.0
+    for key, amount in masks.items():
+        if amount <= 0.01:
+            continue
+        ao = material_library.sample_ao(key, x, y)
+        if ao is None:
+            continue
+        weighted += (0.78 + ao * 0.32) * amount
+        total += amount
+
+    if total > 0:
+        return clamp(weighted / total, 0.72, 1.08)
+
+    ao = material_library.sample_ao(surface, x, y)
+    if ao is None:
+        return 1.0
+    return clamp(0.78 + ao * 0.32, 0.72, 1.08)
 
 
 def soft_feature_mask(features: list[Feature], x: float, y: float, edge_width: float, edge_noise: float) -> float:

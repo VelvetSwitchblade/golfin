@@ -67,6 +67,23 @@ Imported golf polygons are now prepared before package generation:
 
 The island envelope is visual context only. It does not add water or any other gameplay-significant course feature when the source data does not contain it.
 
+## Local PBR Material Library
+
+The compiler can consume locally supplied scanned PBR textures when present:
+
+```bash
+npm run import:materials -- /Users/jordan/Desktop/Texture/Archive.zip
+npm run compile:course
+```
+
+The importer writes normalized, downscaled material channels under:
+
+```text
+compiler/material-library/local/
+```
+
+That folder is gitignored because these source textures may be licensed. The public compiler code can run without it and falls back to deterministic procedural materials. When the local library exists, the render package records its fingerprint under `render/manifest.json` and samples the available albedo, normal, height, and AO maps into the baked terrain outputs.
+
 ## Real Elevation Fixture
 
 ```bash

@@ -17,6 +17,7 @@ from .mesh import ISLAND_LAND_RADIUS_METRES, ISLAND_SHORE_BLEND_METRES, ISLAND_W
 from .model import CourseModel, Feature, HoleModel, Provenance, SurfaceId, to_plain_json
 from .render_package import export_render_package
 from .surfaces import SURFACE_IDS, SURFACE_PHYSICS
+from .texture_library import material_library_fingerprint
 
 ROUGH_COLLAR_METRES = 21.6
 TERRAIN_ENVELOPE_PADDING_METRES = 42.0
@@ -188,6 +189,7 @@ def deterministic_build_id(course: CourseModel, dtm: DTMGrid | None = None) -> s
         {
             "course": to_plain_json(course),
             "dtm": dtm.metadata() if dtm else None,
+            "materialLibrary": material_library_fingerprint(),
             "compiler": __version__,
         },
         sort_keys=True,

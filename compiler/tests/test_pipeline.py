@@ -8,9 +8,11 @@ from pathlib import Path
 
 from golfin_compiler.dtm import read_ascii_grid
 from golfin_compiler.dtm import DTMGrid
+from golfin_compiler.materials import write_png
 from golfin_compiler.mesh import TerrainMesh, island_land_alpha, terrain_height
 from golfin_compiler.model import CourseModel, Feature, HoleModel, Provenance
 from golfin_compiler.pipeline import build_surface_map, compile_legacy_goodwood, normalize_legacy_hole, validate_course
+from golfin_compiler.texture_library import read_png_rgba
 
 
 class CompilerPipelineTest(unittest.TestCase):
@@ -255,6 +257,41 @@ class CompilerPipelineTest(unittest.TestCase):
             self.assertEqual(dtm.height, 2)
             self.assertAlmostEqual(dtm.sample(0, 0), 10)
             self.assertGreater(dtm.sample(5, 5), 10)
+
+    def test_png_texture_reader_samples_rgba(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            texture_path = Path(tmp) / "texture.png"
+            write_png(
+                texture_path,
+                bytes(
+                    (
+                        10,
+                        20,
+                        30,
+                        255,
+                        40,
+                        50,
+                        60,
+                        255,
+                        70,
+                        80,
+                        90,
+                        255,
+                        100,
+                        110,
+                        120,
+                        255,
+                    )
+                ),
+                2,
+                2,
+            )
+
+            texture = read_png_rgba(texture_path)
+
+            self.assertEqual(texture.width, 2)
+            self.assertEqual(texture.height, 2)
+            self.assertEqual(texture.sample_rgba(0.1, 0.1, 1.0), (10, 20, 30, 255))
 
 
 def png_size(path: Path) -> tuple[int, int]:

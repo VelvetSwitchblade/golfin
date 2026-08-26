@@ -43,3 +43,6 @@ next-env.d.ts
 /.wrangler/
 /outputs/
 /work/
+
+# local texture/material inputs may be licensed and should not be pushed by default
+/compiler/material-library/local/
