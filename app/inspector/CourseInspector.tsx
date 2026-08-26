@@ -20,6 +20,7 @@ type SurfaceName =
   | "water";
 
 type InspectorMode =
+  | "render"
   | "semantic"
   | "material"
   | "terrain"
@@ -60,6 +61,25 @@ type Manifest = {
   bounds: Bounds;
   assets: Record<string, string>;
   budgets: Record<string, number>;
+};
+
+type RenderManifest = {
+  schema: string;
+  bounds: Bounds;
+  width: number;
+  height: number;
+  assets: Record<string, string>;
+  context?: {
+    island?: {
+      source: string;
+      gameplaySurface: boolean;
+    };
+    water?: {
+      source: string;
+      gameplaySurface: boolean;
+      mask: string;
+    };
+  };
 };
 
 type SurfaceMap = {
@@ -158,6 +178,7 @@ type Validation = {
 type InspectorData = {
   course: CoursePackage;
   manifest: Manifest;
+  renderManifest: RenderManifest;
   surfaceMap: SurfaceMap;
   gameplay: Gameplay;
   terrain: TerrainDebug;
@@ -184,6 +205,7 @@ const packageRoot = "/courses/goodwood-downs-1/package";
 const holeRoot = `${packageRoot}/holes/01`;
 
 const inspectorModes: Array<{ id: InspectorMode; label: string }> = [
+  { id: "render", label: "Render" },
   { id: "semantic", label: "Semantic" },
   { id: "material", label: "Material" },
   { id: "terrain", label: "Terrain" },
@@ -213,6 +235,7 @@ const materialColors: Record<SurfaceName, string> = {
 };
 
 const modeDescriptions: Record<InspectorMode, string> = {
+  render: "Baked compiler render plate, including visual-only island context.",
   semantic: "Raw compiler surface IDs. Hard edges are expected here.",
   material: "Surface map using production material colours.",
   terrain: "Adaptive mesh triangles shaded by elevation and surface.",
@@ -223,20 +246,22 @@ const modeDescriptions: Record<InspectorMode, string> = {
 
 export function CourseInspector() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [mode, setMode] = useState<InspectorMode>("semantic");
+  const [mode, setMode] = useState<InspectorMode>("render");
   const [data, setData] = useState<InspectorData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [hover, setHover] = useState<HoverState | null>(null);
+  const [assetTick, setAssetTick] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
 
     async function loadPackage() {
       try {
-        const [course, manifest, surfaceMap, gameplay, terrain, collision, validation] =
+        const [course, manifest, renderManifest, surfaceMap, gameplay, terrain, collision, validation] =
           await Promise.all([
             fetchJson<CoursePackage>(`${packageRoot}/course.json`),
             fetchJson<Manifest>(`${holeRoot}/manifest.json`),
+            fetchJson<RenderManifest>(`${holeRoot}/render/manifest.json`),
             fetchJson<SurfaceMap>(`${holeRoot}/surface-map.json`),
             fetchJson<Gameplay>(`${holeRoot}/gameplay.json`),
             fetchJson<TerrainDebug>(`${holeRoot}/terrain-debug.json`),
@@ -251,6 +276,7 @@ export function CourseInspector() {
           setData({
             course,
             manifest,
+            renderManifest,
             surfaceMap,
             gameplay,
             terrain,
@@ -274,6 +300,21 @@ export function CourseInspector() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!data) {
+      return undefined;
+    }
+    const preview = inspectorImage(`${holeRoot}/render/${data.renderManifest.assets.preview}`);
+    const contextWater = inspectorImage(`${holeRoot}/render/${data.renderManifest.assets.contextWaterMask}`);
+    const redraw = () => setAssetTick((tick) => tick + 1);
+    preview.addEventListener("load", redraw);
+    contextWater.addEventListener("load", redraw);
+    return () => {
+      preview.removeEventListener("load", redraw);
+      contextWater.removeEventListener("load", redraw);
+    };
+  }, [data]);
+
   const elevationRange = useMemo(() => {
     if (!data) {
       return { min: 0, max: 1 };
@@ -283,6 +324,7 @@ export function CourseInspector() {
   }, [data]);
 
   const draw = useCallback(() => {
+    void assetTick;
     const canvas = canvasRef.current;
     if (!canvas || !data) {
       return;
@@ -308,6 +350,11 @@ export function CourseInspector() {
     context.clearRect(0, 0, viewportWidth, viewportHeight);
     context.fillStyle = "#102316";
     context.fillRect(0, 0, viewportWidth, viewportHeight);
+
+    if (mode === "render") {
+      drawCompiledRender(context, data, transform);
+      drawGameplay(context, data.gameplay, transform);
+    }
 
     if (mode === "semantic") {
       drawSurfaceRaster(context, data, transform, surfaceColors, false, 1);
@@ -343,7 +390,7 @@ export function CourseInspector() {
     if (hover) {
       drawHover(context, hover, transform);
     }
-  }, [data, elevationRange, hover, mode]);
+  }, [assetTick, data, elevationRange, hover, mode]);
 
   useEffect(() => {
     draw();
@@ -567,6 +614,21 @@ async function fetchJson<T>(url: string): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+const inspectorImageCache = new Map<string, HTMLImageElement>();
+
+function inspectorImage(src: string) {
+  const cached = inspectorImageCache.get(src);
+  if (cached) {
+    return cached;
+  }
+
+  const image = new Image();
+  image.decoding = "async";
+  image.src = src;
+  inspectorImageCache.set(src, image);
+  return image;
+}
+
 function decodeBase64Bytes(value: string): Uint8Array {
   const binary = atob(value);
   const bytes = new Uint8Array(binary.length);
@@ -630,6 +692,29 @@ function drawSurfaceRaster(
   context.globalAlpha = alpha;
   context.imageSmoothingEnabled = smoothing;
   context.drawImage(bitmap, topLeft[0], topLeft[1], bottomRight[0] - topLeft[0], bottomRight[1] - topLeft[1]);
+  context.restore();
+}
+
+function drawCompiledRender(
+  context: CanvasRenderingContext2D,
+  data: InspectorData,
+  transform: ViewTransform,
+) {
+  const image = inspectorImage(`${holeRoot}/render/${data.renderManifest.assets.preview}`);
+  const topLeft = worldToCanvas([data.renderManifest.bounds.minX, data.renderManifest.bounds.minY], transform);
+  const bottomRight = worldToCanvas([data.renderManifest.bounds.maxX, data.renderManifest.bounds.maxY], transform);
+
+  context.save();
+  context.fillStyle = "#0a2230";
+  context.fillRect(0, 0, context.canvas.width, context.canvas.height);
+  if (image.complete && image.naturalWidth > 0) {
+    context.imageSmoothingEnabled = true;
+    context.drawImage(image, topLeft[0], topLeft[1], bottomRight[0] - topLeft[0], bottomRight[1] - topLeft[1]);
+  } else {
+    context.fillStyle = "#eef9e8";
+    context.font = "13px monospace";
+    context.fillText("Loading baked render plate", topLeft[0] + 12, topLeft[1] + 22);
+  }
   context.restore();
 }
 

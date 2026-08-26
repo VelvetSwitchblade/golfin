@@ -542,6 +542,7 @@ const grassPatternCache = new Map<string, CanvasPattern>();
 const textureImageCache = new Map<string, HTMLImageElement>();
 const courseAssetBase = "/courses/goodwood-downs-1";
 const terrainDebugSrc = `${courseAssetBase}/package/holes/01/terrain-debug.json`;
+const compiledTerrainPreviewSrc = `${courseAssetBase}/package/holes/01/render/terrain-preview.png`;
 const terrainAssetSources = {
   masks: `${courseAssetBase}/masks.png`,
   shadow: `${courseAssetBase}/shadow.png`,
@@ -817,6 +818,40 @@ function createTerrainTexture(gl: WebGLRenderingContext, image: HTMLImageElement
 
 function terrainAssetsReady() {
   return Object.values(terrainAssetSources).every((src) => imageReady(terrainImage(src)));
+}
+
+function clearTerrainCanvas(canvas: HTMLCanvasElement | null, width: number, height: number, dpr: number) {
+  if (!canvas) {
+    return;
+  }
+  canvas.width = Math.max(1, Math.round(width * dpr));
+  canvas.height = Math.max(1, Math.round(height * dpr));
+  const context = canvas.getContext("2d");
+  context?.clearRect(0, 0, canvas.width, canvas.height);
+}
+
+function drawCompiledTerrainPreview(
+  ctx: CanvasRenderingContext2D,
+  sx: (value: number) => number,
+  sy: (value: number) => number,
+  mesh: CompiledTerrainMesh | null,
+) {
+  const image = terrainImage(compiledTerrainPreviewSrc);
+  if (!mesh || !imageReady(image)) {
+    return false;
+  }
+
+  const metresToWorld = worldUnitsPerYard / 0.9144;
+  const minX = mesh.bounds.minX * metresToWorld;
+  const minY = mesh.bounds.minY * metresToWorld;
+  const maxX = mesh.bounds.maxX * metresToWorld;
+  const maxY = mesh.bounds.maxY * metresToWorld;
+
+  ctx.save();
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(image, sx(minX), sy(minY), sx(maxX) - sx(minX), sy(maxY) - sy(minY));
+  ctx.restore();
+  return true;
 }
 
 function createTerrainWebGlState(canvas: HTMLCanvasElement, mesh: CompiledTerrainMesh) {
@@ -2217,7 +2252,13 @@ function drawOverviewMarker(
   ctx.fill();
 }
 
-function drawMiniMap(ctx: CanvasRenderingContext2D, width: number, height: number, ball: BallState) {
+function drawMiniMap(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  ball: BallState,
+  mesh: CompiledTerrainMesh | null,
+) {
   const mapWidth = Math.min(210, width * 0.3);
   const mapHeight = Math.min(292, height * 0.36);
   const margin = Math.max(14, Math.min(width, height) * 0.025);
@@ -2240,15 +2281,18 @@ function drawMiniMap(ctx: CanvasRenderingContext2D, width: number, height: numbe
   ctx.fill();
   ctx.clip();
 
-  ctx.fillStyle = worldGrassPattern(ctx, "heavy", sx, sy, scale) ?? heavy.color;
-  ctx.fillRect(left, top, mapWidth, mapHeight);
-  if (renderRules.drawWater) {
-    drawWater(ctx, sx, sy, scale, "mini");
-  }
-  drawMaintainedRough(ctx, sx, sy, scale);
-  drawSurfacePolygons(ctx, sx, sy, scale);
-  if (renderRules.drawScenery) {
-    drawTrees(ctx, sx, sy, scale, "mini");
+  const compilerPreviewRendered = drawCompiledTerrainPreview(ctx, sx, sy, mesh);
+  if (!compilerPreviewRendered) {
+    ctx.fillStyle = worldGrassPattern(ctx, "heavy", sx, sy, scale) ?? heavy.color;
+    ctx.fillRect(left, top, mapWidth, mapHeight);
+    if (renderRules.drawWater) {
+      drawWater(ctx, sx, sy, scale, "mini");
+    }
+    drawMaintainedRough(ctx, sx, sy, scale);
+    drawSurfacePolygons(ctx, sx, sy, scale);
+    if (renderRules.drawScenery) {
+      drawTrees(ctx, sx, sy, scale, "mini");
+    }
   }
   drawPin(ctx, sx, sy, scale);
 
@@ -2392,9 +2436,16 @@ export function GolfinPrototype() {
         : 0;
 
     ctx.clearRect(0, 0, width, height);
-    const terrainRendered = renderTerrainWebGl(terrainCanvasRef.current, terrainMeshRef.current, camera, width, height, dpr, timestamp);
+    const compilerPreviewRendered = drawCompiledTerrainPreview(ctx, sx, sy, terrainMeshRef.current);
+    const terrainRendered = compilerPreviewRendered
+      ? false
+      : renderTerrainWebGl(terrainCanvasRef.current, terrainMeshRef.current, camera, width, height, dpr, timestamp);
 
-    if (terrainRendered) {
+    if (compilerPreviewRendered) {
+      clearTerrainCanvas(terrainCanvasRef.current, width, height, dpr);
+      drawAtmosphere(ctx, width, height);
+      drawPin(ctx, sx, sy, camera.zoom);
+    } else if (terrainRendered) {
       drawAtmosphere(ctx, width, height);
       drawPin(ctx, sx, sy, camera.zoom);
     } else {
@@ -2411,7 +2462,7 @@ export function GolfinPrototype() {
       drawOverviewMarker(ctx, sx, sy, camera.zoom, ball);
     }
     if (currentHoleState === "playing") {
-      drawMiniMap(ctx, width, height, ball);
+      drawMiniMap(ctx, width, height, ball, terrainMeshRef.current);
       drawHud(ctx, width, ball, selectedClubRef.current);
     }
   }, []);
