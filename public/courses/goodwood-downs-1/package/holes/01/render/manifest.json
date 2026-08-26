@@ -36,7 +36,8 @@
     "contextWaterMask": "context-water-mask.png",
     "contextWaterFill": "context-water-fill.png",
     "surfaceId": "surface-id.r8",
-    "preview": "terrain-preview.png"
+    "preview": "terrain-preview.png",
+    "landPreview": "terrain-land-preview.png"
   },
   "context": {
     "island": {

@@ -304,7 +304,8 @@ export function CourseInspector() {
     if (!data) {
       return undefined;
     }
-    const preview = inspectorImage(`${holeRoot}/render/${data.renderManifest.assets.preview}`);
+    const previewAsset = data.renderManifest.assets.landPreview ?? data.renderManifest.assets.preview;
+    const preview = inspectorImage(`${holeRoot}/render/${previewAsset}`);
     const contextWater = inspectorImage(`${holeRoot}/render/${data.renderManifest.assets.contextWaterMask}`);
     const waterFill = data.renderManifest.assets.contextWaterFill
       ? inspectorImage(`${holeRoot}/render/${data.renderManifest.assets.contextWaterFill}`)
@@ -705,7 +706,8 @@ function drawCompiledRender(
   data: InspectorData,
   transform: ViewTransform,
 ) {
-  const image = inspectorImage(`${holeRoot}/render/${data.renderManifest.assets.preview}`);
+  const previewAsset = data.renderManifest.assets.landPreview ?? data.renderManifest.assets.preview;
+  const image = inspectorImage(`${holeRoot}/render/${previewAsset}`);
   const waterFillSrc = data.renderManifest.assets.contextWaterFill;
   const waterFill = waterFillSrc ? inspectorImage(`${holeRoot}/render/${waterFillSrc}`) : null;
   const topLeft = worldToCanvas([data.renderManifest.bounds.minX, data.renderManifest.bounds.minY], transform);

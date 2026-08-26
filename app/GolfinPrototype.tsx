@@ -542,7 +542,7 @@ const grassPatternCache = new Map<string, CanvasPattern>();
 const textureImageCache = new Map<string, HTMLImageElement>();
 const courseAssetBase = "/courses/goodwood-downs-1";
 const terrainDebugSrc = `${courseAssetBase}/package/holes/01/terrain-debug.json`;
-const compiledTerrainPreviewSrc = `${courseAssetBase}/package/holes/01/render/terrain-preview.png`;
+const compiledTerrainPreviewSrc = `${courseAssetBase}/package/holes/01/render/terrain-land-preview.png`;
 const compiledContextWaterFillSrc = `${courseAssetBase}/package/holes/01/render/context-water-fill.png`;
 const terrainAssetSources = {
   masks: `${courseAssetBase}/masks.png`,

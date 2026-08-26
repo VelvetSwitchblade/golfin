@@ -61,6 +61,7 @@ test("compiled Goodwood hole assets are present", async () => {
     access("public/courses/goodwood-downs-1/package/holes/01/materials.json"),
     access("public/courses/goodwood-downs-1/package/holes/01/render/manifest.json"),
     access("public/courses/goodwood-downs-1/package/holes/01/render/terrain-preview.png"),
+    access("public/courses/goodwood-downs-1/package/holes/01/render/terrain-land-preview.png"),
     access("public/courses/goodwood-downs-1/package/holes/01/render/context-water-mask.png"),
     access("public/courses/goodwood-downs-1/package/holes/01/render/context-water-fill.png"),
     access("public/courses/goodwood-downs-1/package/holes/01/terrain.glb"),

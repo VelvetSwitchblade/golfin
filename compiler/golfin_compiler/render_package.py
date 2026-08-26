@@ -48,6 +48,7 @@ def export_render_package(
     height_map = bytearray(width * height * 4)
     surface_raw = bytearray(width * height)
     surface_preview = bytearray(width * height * 4)
+    land_preview = bytearray(width * height * 4)
     context_water_fill = create_context_water_fill()
 
     height_min, height_max = height_range(dtm)
@@ -74,11 +75,13 @@ def export_render_package(
             hillshade = clamp(0.48 + 0.52 * dot3(n, light_dir), 0.0, 1.0)
             ambient_edge = edge_ambient_occlusion(features_by_surface, x, y)
             shade = clamp(hillshade * ambient_edge, 0.2, 1.18)
-            color = terrain_color(surface, masks, x, y, h)
+            land_color = terrain_color(surface, masks, x, y, h)
+            color = land_color
             if context_water > 0.01:
                 water = water_color(x, y)
                 color = tuple(clamp_int(mix(water[channel], color[channel], land_alpha)) for channel in range(3))
             shaded = tuple(clamp_int(channel * shade) for channel in color)
+            land_shaded = tuple(clamp_int(channel * shade) for channel in land_color)
 
             albedo[index * 4 : index * 4 + 4] = bytes((*color, 255))
             light_value = clamp_int(shade * 255)
@@ -97,6 +100,7 @@ def export_render_package(
             h_value = clamp_int(((h - height_min) / max(0.01, height_max - height_min)) * 255)
             height_map[index * 4 : index * 4 + 4] = bytes((h_value, h_value, h_value, 255))
             surface_preview[index * 4 : index * 4 + 4] = bytes((*shaded, 255))
+            land_preview[index * 4 : index * 4 + 4] = bytes((*land_shaded, clamp_int(land_alpha * 255)))
 
     (render_dir / "surface-id.r8").write_bytes(surface_raw)
     write_png(render_dir / "terrain-albedo.png", albedo, width, height)
@@ -107,6 +111,7 @@ def export_render_package(
     write_png(render_dir / "context-water-mask.png", context_water_mask, width, height)
     write_png(render_dir / "context-water-fill.png", context_water_fill, CONTEXT_WATER_TILE_SIZE, CONTEXT_WATER_TILE_SIZE)
     write_png(render_dir / "terrain-preview.png", surface_preview, width, height)
+    write_png(render_dir / "terrain-land-preview.png", land_preview, width, height)
 
     manifest: dict[str, object] = {
         "schema": "golfin.render-package.v0",
@@ -134,6 +139,7 @@ def export_render_package(
             "contextWaterFill": "context-water-fill.png",
             "surfaceId": "surface-id.r8",
             "preview": "terrain-preview.png",
+            "landPreview": "terrain-land-preview.png",
         },
         "context": {
             "island": {
