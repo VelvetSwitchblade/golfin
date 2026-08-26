@@ -238,10 +238,14 @@ const materials: Record<Surface["name"], Surface> = {
   tee,
 };
 
+const courseAssetBase = "/courses/goodwood-downs-1";
+const localMaterialVersion = "close-detail-v3";
+const localMaterialBase = `${courseAssetBase}/package/holes/01/render/material-library/local`;
+
 const grassTextureSpecs: Record<Exclude<Surface["name"], "bunker">, GrassTextureSpec> = {
   fairway: {
-    albedoSrc: "/courses/goodwood-downs-1/package/holes/01/render/material-library/local/fairway/albedo.png",
-    heightSrc: "/courses/goodwood-downs-1/package/holes/01/render/material-library/local/fairway/height.png",
+    albedoSrc: `${localMaterialBase}/fairway/albedo.png?v=${localMaterialVersion}`,
+    heightSrc: `${localMaterialBase}/fairway/height.png?v=${localMaterialVersion}`,
     fallback: [66, 146, 72],
     tint: [92, 176, 72],
     tintStrength: 0.46,
@@ -252,8 +256,8 @@ const grassTextureSpecs: Record<Exclude<Surface["name"], "bunker">, GrassTexture
     tileWorldSize: 220,
   },
   green: {
-    albedoSrc: "/courses/goodwood-downs-1/package/holes/01/render/material-library/local/green/albedo.png",
-    heightSrc: "/courses/goodwood-downs-1/package/holes/01/render/material-library/local/green/height.png",
+    albedoSrc: `${localMaterialBase}/green/albedo.png?v=${localMaterialVersion}`,
+    heightSrc: `${localMaterialBase}/green/height.png?v=${localMaterialVersion}`,
     fallback: [94, 181, 91],
     tint: [126, 214, 99],
     tintStrength: 0.58,
@@ -264,8 +268,8 @@ const grassTextureSpecs: Record<Exclude<Surface["name"], "bunker">, GrassTexture
     tileWorldSize: 160,
   },
   heavy: {
-    albedoSrc: "/courses/goodwood-downs-1/package/holes/01/render/material-library/local/out_of_bounds/albedo.png",
-    heightSrc: "/courses/goodwood-downs-1/package/holes/01/render/material-library/local/out_of_bounds/height.png",
+    albedoSrc: `${localMaterialBase}/out_of_bounds/albedo.png?v=${localMaterialVersion}`,
+    heightSrc: `${localMaterialBase}/out_of_bounds/height.png?v=${localMaterialVersion}`,
     fallback: [31, 91, 50],
     tint: [40, 104, 49],
     tintStrength: 0.34,
@@ -276,8 +280,8 @@ const grassTextureSpecs: Record<Exclude<Surface["name"], "bunker">, GrassTexture
     tileWorldSize: 300,
   },
   rough: {
-    albedoSrc: "/courses/goodwood-downs-1/package/holes/01/render/material-library/local/rough/albedo.png",
-    heightSrc: "/courses/goodwood-downs-1/package/holes/01/render/material-library/local/rough/height.png",
+    albedoSrc: `${localMaterialBase}/rough/albedo.png?v=${localMaterialVersion}`,
+    heightSrc: `${localMaterialBase}/rough/height.png?v=${localMaterialVersion}`,
     fallback: [42, 116, 59],
     tint: [54, 132, 61],
     tintStrength: 0.4,
@@ -288,8 +292,8 @@ const grassTextureSpecs: Record<Exclude<Surface["name"], "bunker">, GrassTexture
     tileWorldSize: 250,
   },
   tee: {
-    albedoSrc: "/courses/goodwood-downs-1/package/holes/01/render/material-library/local/tee/albedo.png",
-    heightSrc: "/courses/goodwood-downs-1/package/holes/01/render/material-library/local/tee/height.png",
+    albedoSrc: `${localMaterialBase}/tee/albedo.png?v=${localMaterialVersion}`,
+    heightSrc: `${localMaterialBase}/tee/height.png?v=${localMaterialVersion}`,
     fallback: [87, 166, 86],
     tint: [105, 190, 85],
     tintStrength: 0.5,
@@ -540,7 +544,6 @@ function colorString(color: [number, number, number], alpha = 1) {
 
 const grassPatternCache = new Map<string, CanvasPattern>();
 const textureImageCache = new Map<string, HTMLImageElement>();
-const courseAssetBase = "/courses/goodwood-downs-1";
 const terrainDebugSrc = `${courseAssetBase}/package/holes/01/terrain-debug.json`;
 const compiledTerrainPreviewSrc = `${courseAssetBase}/package/holes/01/render/terrain-land-preview.png`;
 const compiledContextWaterFillSrc = `${courseAssetBase}/package/holes/01/render/context-water-fill.png`;
@@ -583,6 +586,28 @@ function terrainImage(src: string) {
 
 function imageReady(image: HTMLImageElement) {
   return image.complete && image.naturalWidth > 0;
+}
+
+function materialDebugEnabled() {
+  return typeof window !== "undefined" && new URLSearchParams(window.location.search).has("debugMaterials");
+}
+
+function localMaterialLoadSummary() {
+  const sources = Object.values(grassTextureSpecs).flatMap((spec) => [spec.albedoSrc, spec.heightSrc]);
+  const loaded = sources.filter((src) => imageReady(textureImage(src))).length;
+  return `${loaded}/${sources.length}`;
+}
+
+function drawMaterialDebugHud(ctx: CanvasRenderingContext2D) {
+  ctx.save();
+  ctx.font = "12px monospace";
+  ctx.textBaseline = "top";
+  ctx.fillStyle = "rgba(5, 20, 12, 0.82)";
+  ctx.fillRect(12, 88, 262, 48);
+  ctx.fillStyle = "#eaffd8";
+  ctx.fillText(`material detail: ${localMaterialVersion}`, 22, 98);
+  ctx.fillText(`loaded local maps: ${localMaterialLoadSummary()}`, 22, 116);
+  ctx.restore();
 }
 
 function createFallbackGrassPattern(
@@ -2021,7 +2046,7 @@ function drawCompiledCloseSurfaceDetail(
   scale: number,
   timestamp: number,
 ) {
-  const detailAmount = clamp((scale - 1.2) / 0.85, 0, 1);
+  const detailAmount = materialDebugEnabled() ? 1 : clamp((scale - 0.75) / 0.45, 0, 1);
   if (detailAmount <= 0) {
     return;
   }
@@ -2034,7 +2059,7 @@ function drawCompiledCloseSurfaceDetail(
   ctx.restore();
 
   ctx.save();
-  ctx.globalAlpha = 0.64 * detailAmount;
+  ctx.globalAlpha = 0.92 * detailAmount;
   ctx.globalCompositeOperation = "source-over";
   drawSurfaceTextures(ctx, sx, sy, scale);
   ctx.restore();
@@ -2507,6 +2532,9 @@ export function GolfinPrototype() {
       drawCompiledCloseSurfaceDetail(ctx, sx, sy, camera.zoom, timestamp);
       drawAtmosphere(ctx, width, height);
       drawPin(ctx, sx, sy, camera.zoom);
+      if (materialDebugEnabled()) {
+        drawMaterialDebugHud(ctx);
+      }
     } else if (terrainRendered) {
       drawAtmosphere(ctx, width, height);
       drawPin(ctx, sx, sy, camera.zoom);
