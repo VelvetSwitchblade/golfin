@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 from pathlib import Path
 
 from .dtm import DTMGrid
@@ -14,7 +15,7 @@ from .surfaces import SURFACE_IDS
 from .texture_library import MaterialLibrary, load_material_library, material_library_fingerprint
 
 ROUGH_COLLAR_METRES = 21.6
-RENDER_TARGET_HEIGHT = 512
+DEFAULT_RENDER_TARGET_HEIGHT = 512
 CONTEXT_WATER_TILE_SIZE = 256
 
 Point = tuple[float, float]
@@ -36,7 +37,7 @@ def export_render_package(
     max_y = float(bounds["maxY"])
     metres_width = max_x - min_x
     metres_height = max_y - min_y
-    height = RENDER_TARGET_HEIGHT
+    height = render_target_height()
     width = max(256, round(height * metres_width / metres_height))
     metres_per_pixel_x = metres_width / width
     metres_per_pixel_y = metres_height / height
@@ -125,6 +126,10 @@ def export_render_package(
         "bounds": bounds,
         "width": width,
         "height": height,
+        "resolutionPolicy": {
+            "targetHeight": height,
+            "configuredBy": "GOLFIN_RENDER_TARGET_HEIGHT",
+        },
         "metresPerPixel": {
             "x": metres_per_pixel_x,
             "y": metres_per_pixel_y,
@@ -180,6 +185,16 @@ def export_render_package(
     }
     (render_dir / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     return manifest
+
+
+def render_target_height() -> int:
+    value = os.environ.get("GOLFIN_RENDER_TARGET_HEIGHT")
+    if not value:
+        return DEFAULT_RENDER_TARGET_HEIGHT
+    try:
+        return max(512, min(4096, int(value)))
+    except ValueError:
+        return DEFAULT_RENDER_TARGET_HEIGHT
 
 
 def material_masks(
