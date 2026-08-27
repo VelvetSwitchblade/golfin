@@ -1339,10 +1339,6 @@ function polygonCentroid(points: Array<[number, number]>) {
   };
 }
 
-function cross2d(ax: number, ay: number, bx: number, by: number) {
-  return ax * by - ay * bx;
-}
-
 function distanceToSegment(
   x: number,
   y: number,
@@ -1395,74 +1391,6 @@ function pointInPolygon(x: number, y: number, polygon: Array<[number, number]>) 
     }
   }
   return inside;
-}
-
-function rayPolygonDistance(
-  origin: { x: number; y: number },
-  angle: number,
-  polygon: Array<[number, number]>,
-) {
-  const rayX = Math.cos(angle);
-  const rayY = Math.sin(angle);
-  let closest = Number.POSITIVE_INFINITY;
-
-  for (let index = 0; index < polygon.length; index += 1) {
-    const start = polygon[index];
-    const end = polygon[(index + 1) % polygon.length];
-    const segmentX = end[0] - start[0];
-    const segmentY = end[1] - start[1];
-    const denominator = cross2d(rayX, rayY, segmentX, segmentY);
-    if (Math.abs(denominator) < 0.0001) {
-      continue;
-    }
-
-    const relativeX = start[0] - origin.x;
-    const relativeY = start[1] - origin.y;
-    const rayDistance = cross2d(relativeX, relativeY, segmentX, segmentY) / denominator;
-    const segmentAmount = cross2d(relativeX, relativeY, rayX, rayY) / denominator;
-
-    if (rayDistance > 0 && segmentAmount >= 0 && segmentAmount <= 1) {
-      closest = Math.min(closest, rayDistance);
-    }
-  }
-
-  return closest;
-}
-
-function createBunkerContourRing(
-  polygon: Array<[number, number]>,
-  center: { x: number; y: number },
-  inset: number,
-  ringIndex: number,
-) {
-  const samples = 96;
-  const radii = Array.from({ length: samples }, (_, index) => {
-    const angle = (index / samples) * Math.PI * 2;
-    return rayPolygonDistance(center, angle, polygon);
-  });
-  const finiteRadii = radii.filter((radius) => Number.isFinite(radius));
-  if (finiteRadii.length < samples * 0.72) {
-    return [];
-  }
-
-  const maxRadius = Math.max(...finiteRadii);
-  const minimumRadius = Math.max(2.8, maxRadius * 0.08);
-
-  return radii
-    .map((radius, index) => {
-      if (!Number.isFinite(radius)) {
-        return null;
-      }
-
-      const angle = (index / samples) * Math.PI * 2;
-      const contourVariation = (seededNoise(ringIndex * 17.1 + index * 0.31) - 0.5) * 1.4;
-      const contourRadius = clamp(radius - inset + contourVariation, minimumRadius, maxRadius);
-      return [
-        center.x + Math.cos(angle) * contourRadius,
-        center.y + Math.sin(angle) * contourRadius,
-      ] as [number, number];
-    })
-    .filter((point): point is [number, number] => point !== null);
 }
 
 function isInMaintainedRough(x: number, y: number) {
@@ -2271,28 +2199,24 @@ function drawFlatBunkerDetail(
     return;
   }
 
-  const center = polygonCentroid(surface.points);
-  const points = normalizedPolygon(surface.points);
-  const shadeBands = [
-    { inset: 4.5, color: "rgba(203, 164, 88, 0.3)" },
-    { inset: 9, color: "rgba(190, 146, 74, 0.34)" },
-    { inset: 13.5, color: "rgba(176, 128, 62, 0.36)" },
-    { inset: 18, color: "rgba(158, 110, 51, 0.34)" },
-    { inset: 22.5, color: "rgba(140, 92, 43, 0.3)" },
-  ];
-
   ctx.save();
   traceSurface(ctx, surface, sx, sy);
   ctx.clip();
-  shadeBands.forEach((band, index) => {
-    const ring = createBunkerContourRing(points, center, band.inset, index + surface.id);
-    if (ring.length < 8) {
-      return;
-    }
-    ctx.fillStyle = band.color;
-    tracePolygon(ctx, ring, sx, sy);
-    ctx.fill();
-  });
+
+  ctx.save();
+  ctx.translate(-5.5 * scale, -7 * scale);
+  traceSurface(ctx, surface, sx, sy);
+  ctx.fillStyle = "rgba(255, 232, 159, 0.28)";
+  ctx.fill();
+  ctx.restore();
+
+  ctx.save();
+  ctx.translate(7 * scale, 9 * scale);
+  traceSurface(ctx, surface, sx, sy);
+  ctx.fillStyle = "rgba(126, 86, 42, 0.24)";
+  ctx.fill();
+  ctx.restore();
+
   ctx.restore();
 }
 
