@@ -478,6 +478,11 @@ export function CourseCreator() {
     setStatus("Submitted as local course option");
   }
 
+  function previewDraft() {
+    persistDraft();
+    window.location.href = "/";
+  }
+
   function downloadExport() {
     const blob = new Blob([`${JSON.stringify(exported, null, 2)}\n`], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -576,6 +581,9 @@ export function CourseCreator() {
             </button>
             <button type="button" onClick={downloadExport}>
               Export JSON
+            </button>
+            <button type="button" onClick={previewDraft}>
+              Preview
             </button>
             <button className="creator-submit" type="button" onClick={submitCourse}>
               Submit

@@ -21,9 +21,12 @@ type Surface = {
   rollDrag: number;
 };
 
+type GroundSurfaceName = Surface["name"];
+type CourseSurfaceName = GroundSurfaceName | "water";
+
 type CourseSurface = {
   id: number;
-  type: Surface["name"];
+  type: CourseSurfaceName;
   points: Array<[number, number]>;
 };
 
@@ -163,10 +166,45 @@ type CourseData = {
   ref: string;
   par: number;
   yards: number;
+  world?: {
+    width: number;
+    height: number;
+  };
+  worldUnitsPerYard?: number;
   holeLine: Array<[number, number]>;
   tee: [number, number];
   pin: [number, number];
   surfaces: CourseSurface[];
+};
+
+type CreatorPoint = {
+  x: number;
+  y: number;
+};
+
+type CreatorStroke = {
+  id: string;
+  surface: "tee" | "fairway" | "green" | "bunker" | "water";
+  points: CreatorPoint[];
+  width: number;
+};
+
+type CreatorDraft = {
+  schema: "golfin.creator-draft.v0";
+  id: string;
+  name: string;
+  courseName: string;
+  holeRef: string;
+  par: number;
+  yards: number;
+  world: {
+    width: number;
+    height: number;
+  };
+  teePoint: CreatorPoint | null;
+  pinPoint: CreatorPoint | null;
+  strokes: CreatorStroke[];
+  updatedAt: string;
 };
 
 type CameraState = {
@@ -240,7 +278,7 @@ const tee: Surface = {
   rollDrag: 5.6,
 };
 
-const materials: Record<Surface["name"], Surface> = {
+const materials: Record<GroundSurfaceName, Surface> = {
   fairway,
   rough,
   heavy,
@@ -251,7 +289,7 @@ const materials: Record<Surface["name"], Surface> = {
 
 const courseAssetBase = "/courses/goodwood-downs-1";
 
-const grassTextureSpecs: Record<Exclude<Surface["name"], "bunker">, GrassTextureSpec> = {
+const grassTextureSpecs: Record<Exclude<GroundSurfaceName, "bunker">, GrassTextureSpec> = {
   fairway: {
     albedoSrc: "/textures/grass/Grass005_1K-JPG_Color.jpg",
     heightSrc: "/textures/grass/Grass005_1K-JPG_Displacement.jpg",
@@ -327,7 +365,7 @@ const cupCaptureSpeed = 36;
 const sinkDurationMs = 950;
 const celebrationDurationMs = 2600;
 const outOfBoundsDurationMs = 1450;
-const scorecardHoleYards = goodwoodDownsHole1.yards;
+let scorecardHoleYards = goodwoodDownsHole1.yards;
 const fixedSwingMph: SwingSpeed = 100;
 const renderRules: RenderRules = {
   drawWater: false,
@@ -339,7 +377,7 @@ const renderRules: RenderRules = {
   windStrength: 0.38,
 };
 const sunVector = { x: -0.62, y: 0.78 };
-const flatColors: Record<Surface["name"] | "water", string> = {
+const flatColors: Record<CourseSurfaceName, string> = {
   heavy: "#1f5631",
   rough: "#347b45",
   fairway: "#82bf58",
@@ -348,7 +386,7 @@ const flatColors: Record<Surface["name"] | "water", string> = {
   bunker: "#dbc076",
   water: "#6eb1c2",
 };
-const surfaceEmbossRules: Partial<Record<Surface["name"], SurfaceEmbossRule>> = {
+const surfaceEmbossRules: Partial<Record<GroundSurfaceName, SurfaceEmbossRule>> = {
   rough: { width: 2.6, offset: 0.85, blur: 0.9, light: 0.045, shade: 0.065 },
   fairway: { width: 3.2, offset: 1, blur: 1, light: 0.06, shade: 0.085 },
   tee: { width: 2.8, offset: 0.95, blur: 0.95, light: 0.055, shade: 0.075 },
@@ -492,21 +530,6 @@ function orientCourse(source: CourseData): CourseData {
   };
 }
 
-const course = orientCourse(goodwoodDownsHole1);
-const teePoint = course.holeLine[0];
-const worldUnitsPerYard = lineLength(course.holeLine) / scorecardHoleYards;
-const waterHazards: WaterHazard[] = [];
-
-const startBall: BallState = {
-  x: teePoint[0],
-  y: teePoint[1],
-  z: 0,
-  vx: 0,
-  vy: 0,
-  vz: 0,
-  spin: 0,
-};
-
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
 }
@@ -520,6 +543,147 @@ function lineLength(points: Array<[number, number]>) {
     const previous = points[index - 1];
     return total + Math.hypot(point[0] - previous[0], point[1] - previous[1]);
   }, 0);
+}
+
+function safeJson<T>(value: string | null, fallback: T): T {
+  if (!value) {
+    return fallback;
+  }
+
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+function creatorLineLength(points: CreatorPoint[]) {
+  let length = 0;
+  for (let index = 0; index < points.length - 1; index += 1) {
+    length += Math.hypot(points[index + 1].x - points[index].x, points[index + 1].y - points[index].y);
+  }
+  return length;
+}
+
+function creatorStrokeToPolygon(stroke: CreatorStroke) {
+  const radius = stroke.width * 0.5;
+  if (stroke.points.length === 1) {
+    return Array.from({ length: 24 }, (_, index) => {
+      const angle = (index / 24) * Math.PI * 2;
+      return [
+        Number((stroke.points[0].x + Math.cos(angle) * radius).toFixed(1)),
+        Number((stroke.points[0].y + Math.sin(angle) * radius).toFixed(1)),
+      ] as [number, number];
+    });
+  }
+
+  const left: CreatorPoint[] = [];
+  const right: CreatorPoint[] = [];
+  for (let index = 0; index < stroke.points.length; index += 1) {
+    const previous = stroke.points[Math.max(0, index - 1)];
+    const next = stroke.points[Math.min(stroke.points.length - 1, index + 1)];
+    const dx = next.x - previous.x;
+    const dy = next.y - previous.y;
+    const length = Math.hypot(dx, dy) || 1;
+    const nx = -dy / length;
+    const ny = dx / length;
+    left.push({ x: stroke.points[index].x + nx * radius, y: stroke.points[index].y + ny * radius });
+    right.push({ x: stroke.points[index].x - nx * radius, y: stroke.points[index].y - ny * radius });
+  }
+
+  return [...left, ...right.reverse()].map((point) => [
+    Number(point.x.toFixed(1)),
+    Number(point.y.toFixed(1)),
+  ] as [number, number]);
+}
+
+function creatorDraftToCourse(draft: CreatorDraft): CourseData {
+  const tee = draft.teePoint ?? { x: draft.world.width / 2, y: draft.world.height - 140 };
+  const pin = draft.pinPoint ?? { x: draft.world.width / 2, y: 140 };
+  const holeLine: Array<[number, number]> = [
+    [Number(tee.x.toFixed(1)), Number(tee.y.toFixed(1))],
+    [Number(pin.x.toFixed(1)), Number(pin.y.toFixed(1))],
+  ];
+  const courseSlug = draft.courseName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "course";
+
+  return {
+    id: `custom-${draft.id}`,
+    courseId: `custom-${courseSlug}`,
+    courseName: draft.courseName,
+    name: draft.name,
+    ref: draft.holeRef,
+    par: draft.par,
+    yards: Math.max(1, draft.yards),
+    world: draft.world,
+    worldUnitsPerYard: creatorLineLength([tee, pin]) / Math.max(1, draft.yards),
+    holeLine,
+    tee: holeLine[0],
+    pin: holeLine[1],
+    surfaces: draft.strokes.map((stroke, index) => ({
+      id: index + 1,
+      type: stroke.surface,
+      points: creatorStrokeToPolygon(stroke),
+    })),
+  };
+}
+
+function hasCreatorContent(draft: CreatorDraft | null | undefined) {
+  return Boolean(draft && (draft.strokes.length > 0 || draft.teePoint || draft.pinPoint));
+}
+
+function loadCreatorPreviewCourse() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const drafts = safeJson<CreatorDraft[]>(window.localStorage.getItem(creatorDraftStorageKey), []);
+  const activeDraftId = window.localStorage.getItem(creatorActiveDraftStorageKey);
+  const activeDraft = drafts.find((draft) => draft.id === activeDraftId);
+  if (hasCreatorContent(activeDraft)) {
+    return creatorDraftToCourse(activeDraft);
+  }
+
+  const submitted = safeJson<CourseData[]>(window.localStorage.getItem(creatorSubmittedStorageKey), []);
+  return submitted[0] ?? null;
+}
+
+function extractWaterHazards(source: CourseData): WaterHazard[] {
+  return source.surfaces
+    .filter((surface) => surface.type === "water")
+    .map((surface) => ({
+      id: surface.id,
+      points: surface.points,
+    }));
+}
+
+function normaliseRuntimeCourse(source: CourseData) {
+  if (source.world?.width === worldWidth && source.world.height === worldHeight) {
+    return source;
+  }
+
+  return orientCourse(source);
+}
+
+function applyRuntimeCourse(source: CourseData) {
+  runtimeCourseData = source;
+  course = normaliseRuntimeCourse(runtimeCourseData);
+  scorecardHoleYards = runtimeCourseData.yards;
+  teePoint = course.tee ?? course.holeLine[0];
+  worldUnitsPerYard = runtimeCourseData.worldUnitsPerYard ?? lineLength(course.holeLine) / Math.max(1, scorecardHoleYards);
+  waterHazards = extractWaterHazards(course);
+  startBall = {
+    x: teePoint[0],
+    y: teePoint[1],
+    z: 0,
+    vx: 0,
+    vy: 0,
+    vz: 0,
+    spin: 0,
+  };
+  trees = createTreeLine();
+  waterEdgeDetails = createWaterEdgeDetails();
+  shorelineRipples = createShorelineRipples();
+  terrainWebGlState = null;
 }
 
 function lerp(start: number, end: number, amount: number) {
@@ -560,6 +724,10 @@ function colorString(color: [number, number, number], alpha = 1) {
   return `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${alpha})`;
 }
 
+function isGroundSurfaceName(type: CourseSurfaceName): type is GroundSurfaceName {
+  return type !== "water";
+}
+
 const grassPatternCache = new Map<string, CanvasPattern>();
 const textureImageCache = new Map<string, HTMLImageElement>();
 const terrainDebugSrc = `${courseAssetBase}/package/holes/01/terrain-debug.json`;
@@ -576,6 +744,27 @@ const terrainAssetSources = {
 };
 const terrainImageCache = new Map<string, HTMLImageElement>();
 let terrainWebGlState: TerrainWebGlState | null = null;
+const creatorDraftStorageKey = "golfin:creator-drafts:v0";
+const creatorActiveDraftStorageKey = "golfin:creator-active-draft:v0";
+const creatorSubmittedStorageKey = "golfin:course-options:v0";
+
+let runtimeCourseData = goodwoodDownsHole1;
+let course = orientCourse(runtimeCourseData);
+let teePoint = course.holeLine[0];
+let worldUnitsPerYard = lineLength(course.holeLine) / scorecardHoleYards;
+let waterHazards: WaterHazard[] = extractWaterHazards(course);
+let startBall: BallState = {
+  x: teePoint[0],
+  y: teePoint[1],
+  z: 0,
+  vx: 0,
+  vy: 0,
+  vz: 0,
+  spin: 0,
+};
+let trees: Array<{ x: number; y: number; r: number }> = [];
+let waterEdgeDetails: WaterEdgeDetail[] = [];
+let shorelineRipples: ShorelineRipple[] = [];
 
 function textureImage(src: string) {
   const cached = textureImageCache.get(src);
@@ -610,7 +799,7 @@ function imageReady(image: HTMLImageElement) {
 function createFallbackGrassPattern(
   ctx: CanvasRenderingContext2D,
   spec: GrassTextureSpec,
-  type: Exclude<Surface["name"], "bunker">,
+  type: Exclude<GroundSurfaceName, "bunker">,
 ) {
   const canvas = document.createElement("canvas");
   canvas.width = 96;
@@ -636,7 +825,7 @@ function createFallbackGrassPattern(
   return ctx.createPattern(canvas, "repeat");
 }
 
-function createGrassPattern(ctx: CanvasRenderingContext2D, type: Exclude<Surface["name"], "bunker">) {
+function createGrassPattern(ctx: CanvasRenderingContext2D, type: Exclude<GroundSurfaceName, "bunker">) {
   const cached = grassPatternCache.get(type);
   if (cached) {
     return cached;
@@ -758,7 +947,7 @@ function setPatternWorldTransform(
 
 function worldGrassPattern(
   ctx: CanvasRenderingContext2D,
-  type: Exclude<Surface["name"], "bunker">,
+  type: Exclude<GroundSurfaceName, "bunker">,
   sx: (value: number) => number,
   sy: (value: number) => number,
   scale: number,
@@ -1399,8 +1588,10 @@ function isInMaintainedRough(x: number, y: number) {
 
 function createTreeLine() {
   const trees: Array<{ x: number; y: number; r: number }> = [];
-  const treeSourceTypes: Surface["name"][] = ["fairway", "green", "tee", "rough"];
-  const sourceSurfaces = course.surfaces.filter((surface) => treeSourceTypes.includes(surface.type));
+  const treeSourceTypes: GroundSurfaceName[] = ["fairway", "green", "tee", "rough"];
+  const sourceSurfaces = course.surfaces.filter(
+    (surface) => isGroundSurfaceName(surface.type) && treeSourceTypes.includes(surface.type),
+  );
 
   for (const surface of sourceSurfaces) {
     const centroid = polygonCentroid(surface.points);
@@ -1600,7 +1791,7 @@ function createShorelineRipples() {
 }
 
 function islandCoreDistance(x: number, y: number) {
-  const islandSources = course.surfaces.filter((surface) => surface.type !== "bunker");
+  const islandSources = course.surfaces.filter((surface) => surface.type !== "bunker" && surface.type !== "water");
   const surfaceDistance = distanceToSurfaces(x, y, islandSources);
   const lineDistance = distanceToPolyline(x, y, course.holeLine);
 
@@ -1629,18 +1820,16 @@ function islandOutwardNormal(x: number, y: number) {
   return { x: dx / length, y: dy / length };
 }
 
-const trees = createTreeLine();
-const waterEdgeDetails = createWaterEdgeDetails();
-const shorelineRipples = createShorelineRipples();
+applyRuntimeCourse(goodwoodDownsHole1);
 
 function surfaceAt(x: number, y: number): Surface {
-  const priority: Surface["name"][] = ["green", "tee", "rough", "fairway"];
+  const priority: GroundSurfaceName[] = ["bunker", "green", "tee", "rough", "fairway"];
   for (const type of priority) {
     const match = course.surfaces.find(
       (surface) => surface.type === type && pointInPolygon(x, y, surface.points),
     );
     if (match) {
-      return materials[match.type];
+      return materials[type];
     }
   }
 
@@ -1662,6 +1851,9 @@ function drawMaintainedRough(
   ctx.lineCap = "round";
 
   for (const surface of course.surfaces) {
+    if (surface.type === "water") {
+      continue;
+    }
     traceSurface(ctx, surface, sx, sy);
     ctx.globalAlpha = 1;
     ctx.strokeStyle = worldGrassPattern(ctx, "rough", sx, sy, scale) ?? rough.color;
@@ -1679,7 +1871,7 @@ function drawSurfacePolygons(
   sy: (value: number) => number,
   scale: number,
 ) {
-  const drawOrder: Surface["name"][] = ["rough", "fairway", "tee", "green"];
+  const drawOrder: GroundSurfaceName[] = ["rough", "fairway", "tee", "green"];
   for (const type of drawOrder) {
     for (const surface of course.surfaces.filter((item) => item.type === type)) {
       paintSurfaceBase(ctx, surface, sx, sy, scale);
@@ -1694,6 +1886,13 @@ function paintSurfaceBase(
   sy: (value: number) => number,
   scale: number,
 ) {
+  if (surface.type === "water") {
+    ctx.fillStyle = flatColors.water;
+    traceSurface(ctx, surface, sx, sy);
+    ctx.fill();
+    return;
+  }
+
   const surfaceType = surface.type === "bunker" ? "rough" : surface.type;
   ctx.fillStyle = worldGrassPattern(ctx, surfaceType, sx, sy, scale) ?? materials[surfaceType].color;
   traceSurface(ctx, surface, sx, sy);
@@ -1798,6 +1997,10 @@ function drawSurfaceEmboss(
   sy: (value: number) => number,
   scale: number,
 ) {
+  if (!isGroundSurfaceName(surface.type)) {
+    return;
+  }
+
   const rule = surfaceEmbossRules[surface.type];
 
   if (!rule) {
@@ -1842,7 +2045,7 @@ function drawSurfaceEmbosses(
   sy: (value: number) => number,
   scale: number,
 ) {
-  const embossedTypes: Surface["name"][] = ["rough", "fairway", "tee", "green"];
+  const embossedTypes: GroundSurfaceName[] = ["rough", "fairway", "tee", "green"];
 
   for (const type of embossedTypes) {
     for (const surface of course.surfaces.filter((item) => item.type === type)) {
@@ -1858,7 +2061,7 @@ function drawLiveGrassEdges(
   scale: number,
   timestamp: number,
 ) {
-  const edgeTypes: Surface["name"][] = ["fairway", "green", "tee"];
+  const edgeTypes: GroundSurfaceName[] = ["fairway", "green", "tee"];
   const windLean = Math.sin(timestamp * 0.0014) * renderRules.windStrength;
 
   ctx.save();
@@ -1925,7 +2128,7 @@ function drawWindGrassSheen(
   timestamp: number,
 ) {
   const offset = (timestamp * 0.014 * renderRules.windStrength) % 220;
-  const sheenSurfaces = course.surfaces.filter((surface) => surface.type !== "bunker");
+  const sheenSurfaces = course.surfaces.filter((surface) => surface.type !== "bunker" && surface.type !== "water");
 
   ctx.save();
   for (const surface of sheenSurfaces) {
@@ -2061,7 +2264,7 @@ function drawFlatIsland(
   sy: (value: number) => number,
   scale: number,
 ) {
-  const islandSources = course.surfaces.filter((surface) => surface.type !== "bunker");
+  const islandSources = course.surfaces.filter((surface) => surface.type !== "bunker" && surface.type !== "water");
 
   ctx.save();
   ctx.lineCap = "round";
@@ -2119,7 +2322,7 @@ function drawFlatSurfaces(
   scale: number,
   detail: "full" | "mini",
 ) {
-  const drawOrder: Surface["name"][] = ["rough", "fairway", "tee", "green", "bunker"];
+  const drawOrder: CourseSurfaceName[] = ["water", "rough", "fairway", "tee", "green", "bunker"];
 
   ctx.save();
   for (const type of drawOrder) {
@@ -2133,7 +2336,12 @@ function drawFlatSurfaces(
       }
 
       traceSurface(ctx, surface, sx, sy);
-      ctx.strokeStyle = type === "bunker" ? "rgba(99, 75, 37, 0.2)" : "rgba(13, 46, 24, 0.18)";
+      ctx.strokeStyle =
+        type === "bunker"
+          ? "rgba(99, 75, 37, 0.2)"
+          : type === "water"
+            ? "rgba(12, 79, 93, 0.28)"
+            : "rgba(13, 46, 24, 0.18)";
       ctx.lineWidth = Math.max(1, 1.6 * scale);
       ctx.stroke();
     }
@@ -2315,7 +2523,7 @@ function drawSurfaceTextures(
   sy: (value: number) => number,
   scale: number,
 ) {
-  const textureOrder: Surface["name"][] = ["rough", "fairway", "tee", "green"];
+  const textureOrder: GroundSurfaceName[] = ["rough", "fairway", "tee", "green"];
 
   for (const type of textureOrder) {
     for (const surface of course.surfaces.filter((item) => item.type === type)) {
@@ -2701,11 +2909,44 @@ export function GolfinPrototype() {
   const [moving, setMoving] = useState(false);
   const [holeState, setHoleState] = useState<HoleState>("playing");
   const [selectedClubId, setSelectedClubId] = useState(defaultClub.id);
+  const [, setLoadedCourseId] = useState(course.id);
 
   function changeHoleState(nextState: HoleState) {
     holeStateRef.current = nextState;
     setHoleState(nextState);
   }
+
+  const resetPreviewForCourse = useCallback(() => {
+    if (celebrationTimeoutRef.current) {
+      window.clearTimeout(celebrationTimeoutRef.current);
+      celebrationTimeoutRef.current = null;
+    }
+    if (frameRef.current) {
+      cancelAnimationFrame(frameRef.current);
+      frameRef.current = null;
+    }
+
+    terrainMeshRef.current = null;
+    ballRef.current = { ...startBall };
+    trailRef.current = [];
+    holedRef.current = false;
+    movingRef.current = false;
+    lastTimeRef.current = null;
+    selectedClubRef.current = defaultClub;
+    setMoving(false);
+    setSelectedClubId(defaultClub.id);
+    changeHoleState("playing");
+    cameraRef.current = {
+      x: worldWidth / 2,
+      y: worldHeight / 2,
+      zoom: 0.6,
+      targetX: worldWidth / 2,
+      targetY: worldHeight / 2,
+      targetZoom: 0.6,
+    };
+    overviewUntilRef.current = performance.now() + 1500;
+    setLoadedCourseId(course.id);
+  }, []);
 
   const draw = useCallback((timestamp = performance.now()) => {
     const canvas = canvasRef.current;
@@ -2789,9 +3030,28 @@ export function GolfinPrototype() {
   }, []);
 
   useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      const creatorCourse = loadCreatorPreviewCourse();
+      if (!creatorCourse) {
+        return;
+      }
+
+      applyRuntimeCourse(creatorCourse);
+      resetPreviewForCourse();
+      draw();
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [draw, resetPreviewForCourse]);
+
+  useEffect(() => {
     let cancelled = false;
 
     async function loadTerrainMesh() {
+      if (runtimeCourseData.id !== goodwoodDownsHole1.id) {
+        return;
+      }
+
       try {
         const response = await fetch(terrainDebugSrc);
         if (!response.ok) {
