@@ -2148,10 +2148,6 @@ function drawFlatSurfaces(
         drawFlatFairwayLines(ctx, surface, sx, sy, scale, detail);
       }
 
-      if (type === "bunker") {
-        drawFlatBunkerDetail(ctx, surface, sx, sy, scale, detail);
-      }
-
       traceSurface(ctx, surface, sx, sy);
       ctx.strokeStyle = type === "bunker" ? "rgba(99, 75, 37, 0.2)" : "rgba(13, 46, 24, 0.18)";
       ctx.lineWidth = Math.max(1, 1.6 * scale);
@@ -2184,39 +2180,6 @@ function drawFlatFairwayLines(
     ctx.lineTo(sx(worldWidth + 80), sy(y - 128));
     ctx.stroke();
   }
-  ctx.restore();
-}
-
-function drawFlatBunkerDetail(
-  ctx: CanvasRenderingContext2D,
-  surface: CourseSurface,
-  sx: (value: number) => number,
-  sy: (value: number) => number,
-  scale: number,
-  detail: "full" | "mini",
-) {
-  if (detail === "mini") {
-    return;
-  }
-
-  ctx.save();
-  traceSurface(ctx, surface, sx, sy);
-  ctx.clip();
-
-  ctx.save();
-  ctx.translate(-5.5 * scale, -7 * scale);
-  traceSurface(ctx, surface, sx, sy);
-  ctx.fillStyle = "rgba(255, 232, 159, 0.28)";
-  ctx.fill();
-  ctx.restore();
-
-  ctx.save();
-  ctx.translate(7 * scale, 9 * scale);
-  traceSurface(ctx, surface, sx, sy);
-  ctx.fillStyle = "rgba(126, 86, 42, 0.24)";
-  ctx.fill();
-  ctx.restore();
-
   ctx.restore();
 }
 
