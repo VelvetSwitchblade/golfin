@@ -2040,7 +2040,7 @@ function drawFlatCourse(
   timestamp: number,
   detail: "full" | "mini" = "full",
 ) {
-  drawFlatWaterField(ctx, width, height, timestamp, detail);
+  drawFlatWaterField(ctx, width, height);
   drawFlatIsland(ctx, sx, sy, scale);
   drawFlatSurfaces(ctx, sx, sy, scale, detail);
   drawShorelineRipples(ctx, sx, sy, scale, timestamp, detail);
@@ -2050,25 +2050,9 @@ function drawFlatWaterField(
   ctx: CanvasRenderingContext2D,
   width: number,
   height: number,
-  timestamp: number,
-  detail: "full" | "mini",
 ) {
   ctx.fillStyle = flatColors.water;
   ctx.fillRect(0, 0, width, height);
-
-  const waveAlpha = detail === "mini" ? 0.08 : 0.14;
-  const offset = (timestamp * 0.018) % 48;
-  ctx.save();
-  ctx.strokeStyle = `rgba(255, 255, 255, ${waveAlpha})`;
-  ctx.lineWidth = detail === "mini" ? 0.75 : 1.15;
-  ctx.lineCap = "round";
-  for (let y = -60; y < height + 90; y += 48) {
-    ctx.beginPath();
-    ctx.moveTo(-60, y + offset);
-    ctx.bezierCurveTo(width * 0.28, y + offset - 18, width * 0.62, y + offset + 18, width + 60, y + offset - 4);
-    ctx.stroke();
-  }
-  ctx.restore();
 }
 
 function drawFlatIsland(
