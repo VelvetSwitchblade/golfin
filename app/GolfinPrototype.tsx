@@ -2273,18 +2273,25 @@ function drawFlatBunkerDetail(
 
   const center = polygonCentroid(surface.points);
   const points = normalizedPolygon(surface.points);
+  const shadeBands = [
+    { inset: 4.5, color: "rgba(203, 164, 88, 0.3)" },
+    { inset: 9, color: "rgba(190, 146, 74, 0.34)" },
+    { inset: 13.5, color: "rgba(176, 128, 62, 0.36)" },
+    { inset: 18, color: "rgba(158, 110, 51, 0.34)" },
+    { inset: 22.5, color: "rgba(140, 92, 43, 0.3)" },
+  ];
+
   ctx.save();
   traceSurface(ctx, surface, sx, sy);
   ctx.clip();
-  ctx.strokeStyle = "rgba(139, 102, 50, 0.28)";
-  ctx.lineWidth = Math.max(0.8, 1.25 * scale);
-  [5, 9.5, 14, 18.5, 23].forEach((inset, index) => {
-    const ring = createBunkerContourRing(points, center, inset, index + surface.id);
+  shadeBands.forEach((band, index) => {
+    const ring = createBunkerContourRing(points, center, band.inset, index + surface.id);
     if (ring.length < 8) {
       return;
     }
+    ctx.fillStyle = band.color;
     tracePolygon(ctx, ring, sx, sy);
-    ctx.stroke();
+    ctx.fill();
   });
   ctx.restore();
 }
