@@ -41,6 +41,19 @@ type WaterEdgeDetail = {
   seed: number;
 };
 
+type ShorelineRipple = {
+  id: number;
+  x: number;
+  y: number;
+  tangentX: number;
+  tangentY: number;
+  normalX: number;
+  normalY: number;
+  length: number;
+  travel: number;
+  phase: number;
+};
+
 type GrassTextureSpec = {
   albedoSrc: string;
   heightSrc: string;
@@ -330,6 +343,15 @@ const renderRules: RenderRules = {
   windStrength: 0.38,
 };
 const sunVector = { x: -0.62, y: 0.78 };
+const flatColors: Record<Surface["name"] | "water", string> = {
+  heavy: "#1f5631",
+  rough: "#347b45",
+  fairway: "#82bf58",
+  green: "#b8dd75",
+  tee: "#8dcc63",
+  bunker: "#dbc076",
+  water: "#6eb1c2",
+};
 const surfaceEmbossRules: Partial<Record<Surface["name"], SurfaceEmbossRule>> = {
   rough: { width: 2.6, offset: 0.85, blur: 0.9, light: 0.045, shade: 0.065 },
   fairway: { width: 3.2, offset: 1, blur: 1, light: 0.06, shade: 0.085 },
@@ -1505,8 +1527,66 @@ function createWaterEdgeDetails() {
   return details;
 }
 
+function createShorelineRipples() {
+  const ripples: ShorelineRipple[] = [];
+  const islandSources = course.surfaces.filter((surface) => surface.type !== "bunker");
+
+  for (const surface of islandSources) {
+    const points = normalizedPolygon(surface.points);
+    const centroid = polygonCentroid(points);
+
+    for (let edgeIndex = 0; edgeIndex < points.length; edgeIndex += 1) {
+      const start = points[edgeIndex];
+      const end = points[(edgeIndex + 1) % points.length];
+      const dx = end[0] - start[0];
+      const dy = end[1] - start[1];
+      const edgeLength = Math.hypot(dx, dy);
+      if (edgeLength < 14) {
+        continue;
+      }
+
+      const count = Math.max(1, Math.floor(edgeLength / 24));
+      const tangentX = dx / edgeLength;
+      const tangentY = dy / edgeLength;
+
+      for (let sampleIndex = 0; sampleIndex < count; sampleIndex += 1) {
+        const seed = surface.id * 0.017 + edgeIndex * 9.31 + sampleIndex * 2.93;
+        if (seededNoise(seed) < 0.46) {
+          continue;
+        }
+
+        const t = (sampleIndex + 0.22 + seededNoise(seed + 1.2) * 0.56) / count;
+        const edgeX = start[0] + dx * t;
+        const edgeY = start[1] + dy * t;
+        const awayX = edgeX - centroid.x;
+        const awayY = edgeY - centroid.y;
+        const awayLength = Math.hypot(awayX, awayY) || 1;
+        const normalX = awayX / awayLength;
+        const normalY = awayY / awayLength;
+        const shorelineOffset = roughCollarWidth * 1.42 + 12 + seededNoise(seed + 2.7) * 11;
+
+        ripples.push({
+          id: ripples.length,
+          x: Number((edgeX + normalX * shorelineOffset).toFixed(2)),
+          y: Number((edgeY + normalY * shorelineOffset).toFixed(2)),
+          tangentX,
+          tangentY,
+          normalX,
+          normalY,
+          length: Number((16 + seededNoise(seed + 3.1) * 34).toFixed(2)),
+          travel: Number((8 + seededNoise(seed + 4.4) * 16).toFixed(2)),
+          phase: seededNoise(seed + 5.9),
+        });
+      }
+    }
+  }
+
+  return ripples;
+}
+
 const trees = createTreeLine();
 const waterEdgeDetails = createWaterEdgeDetails();
+const shorelineRipples = createShorelineRipples();
 
 function surfaceAt(x: number, y: number): Surface {
   const priority: Surface["name"][] = ["green", "tee", "rough", "fairway"];
@@ -1905,6 +1985,226 @@ function drawWater(
   }
 }
 
+function drawFlatCourse(
+  ctx: CanvasRenderingContext2D,
+  sx: (value: number) => number,
+  sy: (value: number) => number,
+  width: number,
+  height: number,
+  scale: number,
+  timestamp: number,
+  detail: "full" | "mini" = "full",
+) {
+  drawFlatWaterField(ctx, width, height, timestamp, detail);
+  drawFlatIsland(ctx, sx, sy, scale);
+  drawFlatSurfaces(ctx, sx, sy, scale, detail);
+  drawShorelineRipples(ctx, sx, sy, scale, timestamp, detail);
+}
+
+function drawFlatWaterField(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  timestamp: number,
+  detail: "full" | "mini",
+) {
+  ctx.fillStyle = flatColors.water;
+  ctx.fillRect(0, 0, width, height);
+
+  const waveAlpha = detail === "mini" ? 0.08 : 0.14;
+  const offset = (timestamp * 0.018) % 48;
+  ctx.save();
+  ctx.strokeStyle = `rgba(255, 255, 255, ${waveAlpha})`;
+  ctx.lineWidth = detail === "mini" ? 0.75 : 1.15;
+  ctx.lineCap = "round";
+  for (let y = -60; y < height + 90; y += 48) {
+    ctx.beginPath();
+    ctx.moveTo(-60, y + offset);
+    ctx.bezierCurveTo(width * 0.28, y + offset - 18, width * 0.62, y + offset + 18, width + 60, y + offset - 4);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawFlatIsland(
+  ctx: CanvasRenderingContext2D,
+  sx: (value: number) => number,
+  sy: (value: number) => number,
+  scale: number,
+) {
+  const islandSources = course.surfaces.filter((surface) => surface.type !== "bunker");
+
+  ctx.save();
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+
+  drawFlatHoleConnector(ctx, sx, sy, roughCollarWidth * 3.35 * scale, flatColors.heavy);
+  for (const surface of islandSources) {
+    traceSurface(ctx, surface, sx, sy);
+    ctx.fillStyle = flatColors.heavy;
+    ctx.fill();
+    ctx.strokeStyle = flatColors.heavy;
+    ctx.lineWidth = roughCollarWidth * 3.35 * scale;
+    ctx.stroke();
+  }
+
+  drawFlatHoleConnector(ctx, sx, sy, roughCollarWidth * 1.82 * scale, flatColors.rough);
+  for (const surface of islandSources) {
+    traceSurface(ctx, surface, sx, sy);
+    ctx.strokeStyle = flatColors.rough;
+    ctx.lineWidth = roughCollarWidth * 1.82 * scale;
+    ctx.stroke();
+  }
+
+  ctx.restore();
+}
+
+function drawFlatHoleConnector(
+  ctx: CanvasRenderingContext2D,
+  sx: (value: number) => number,
+  sy: (value: number) => number,
+  lineWidth: number,
+  color: string,
+) {
+  if (course.holeLine.length < 2) {
+    return;
+  }
+
+  ctx.strokeStyle = color;
+  ctx.lineWidth = lineWidth;
+  ctx.beginPath();
+  course.holeLine.forEach(([x, y], index) => {
+    if (index === 0) {
+      ctx.moveTo(sx(x), sy(y));
+    } else {
+      ctx.lineTo(sx(x), sy(y));
+    }
+  });
+  ctx.stroke();
+}
+
+function drawFlatSurfaces(
+  ctx: CanvasRenderingContext2D,
+  sx: (value: number) => number,
+  sy: (value: number) => number,
+  scale: number,
+  detail: "full" | "mini",
+) {
+  const drawOrder: Surface["name"][] = ["rough", "fairway", "tee", "green", "bunker"];
+
+  ctx.save();
+  for (const type of drawOrder) {
+    for (const surface of course.surfaces.filter((item) => item.type === type)) {
+      traceSurface(ctx, surface, sx, sy);
+      ctx.fillStyle = flatColors[type];
+      ctx.fill();
+
+      if (type === "fairway") {
+        drawFlatFairwayLines(ctx, surface, sx, sy, scale, detail);
+      }
+
+      if (type === "bunker") {
+        drawFlatBunkerDetail(ctx, surface, sx, sy, scale, detail);
+      }
+
+      traceSurface(ctx, surface, sx, sy);
+      ctx.strokeStyle = type === "bunker" ? "rgba(99, 75, 37, 0.2)" : "rgba(13, 46, 24, 0.18)";
+      ctx.lineWidth = Math.max(1, 1.6 * scale);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+
+function drawFlatFairwayLines(
+  ctx: CanvasRenderingContext2D,
+  surface: CourseSurface,
+  sx: (value: number) => number,
+  sy: (value: number) => number,
+  scale: number,
+  detail: "full" | "mini",
+) {
+  if (detail === "mini") {
+    return;
+  }
+
+  ctx.save();
+  traceSurface(ctx, surface, sx, sy);
+  ctx.clip();
+  ctx.strokeStyle = "rgba(231, 255, 185, 0.18)";
+  ctx.lineWidth = Math.max(4, 8 * scale);
+  for (let y = -80; y < worldHeight + 120; y += 42) {
+    ctx.beginPath();
+    ctx.moveTo(sx(-80), sy(y));
+    ctx.lineTo(sx(worldWidth + 80), sy(y - 128));
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawFlatBunkerDetail(
+  ctx: CanvasRenderingContext2D,
+  surface: CourseSurface,
+  sx: (value: number) => number,
+  sy: (value: number) => number,
+  scale: number,
+  detail: "full" | "mini",
+) {
+  if (detail === "mini") {
+    return;
+  }
+
+  const center = polygonCentroid(surface.points);
+  ctx.save();
+  traceSurface(ctx, surface, sx, sy);
+  ctx.clip();
+  ctx.strokeStyle = "rgba(139, 102, 50, 0.28)";
+  ctx.lineWidth = Math.max(0.8, 1.25 * scale);
+  for (let i = -2; i <= 2; i += 1) {
+    ctx.beginPath();
+    ctx.ellipse(sx(center.x), sy(center.y), (16 + i * 6) * scale, (8 + i * 3) * scale, -0.65, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawShorelineRipples(
+  ctx: CanvasRenderingContext2D,
+  sx: (value: number) => number,
+  sy: (value: number) => number,
+  scale: number,
+  timestamp: number,
+  detail: "full" | "mini",
+) {
+  const cycle = detail === "mini" ? 3200 : 2600;
+
+  ctx.save();
+  ctx.lineCap = "round";
+  ctx.lineWidth = Math.max(0.7, (detail === "mini" ? 0.9 : 1.25) * scale);
+
+  for (const ripple of shorelineRipples) {
+    const progress = ((timestamp + ripple.phase * cycle) % cycle) / cycle;
+    if (progress > 0.62) {
+      continue;
+    }
+
+    const eased = 1 - Math.pow(1 - progress / 0.62, 2);
+    const alpha = (1 - eased) * (detail === "mini" ? 0.24 : 0.42);
+    const drift = ripple.travel * eased;
+    const half = ripple.length * (0.5 + eased * 0.15) * 0.5;
+    const centerX = ripple.x + ripple.normalX * drift;
+    const centerY = ripple.y + ripple.normalY * drift;
+
+    ctx.strokeStyle = `rgba(255, 255, 245, ${alpha})`;
+    ctx.beginPath();
+    ctx.moveTo(sx(centerX - ripple.tangentX * half), sy(centerY - ripple.tangentY * half));
+    ctx.lineTo(sx(centerX + ripple.tangentX * half), sy(centerY + ripple.tangentY * half));
+    ctx.stroke();
+  }
+
+  ctx.restore();
+}
+
 function drawRock(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -2154,6 +2454,14 @@ function drawGrass(
 
 }
 
+const retainedLegacyTerrainRenderers = [
+  drawCompiledTerrainPreview,
+  drawCompiledWaterBackdrop,
+  renderTerrainWebGl,
+  drawGrass,
+];
+void retainedLegacyTerrainRenderers;
+
 function drawAimGhost(
   ctx: CanvasRenderingContext2D,
   sx: (value: number) => number,
@@ -2288,7 +2596,9 @@ function drawMiniMap(
   height: number,
   ball: BallState,
   mesh: CompiledTerrainMesh | null,
+  timestamp: number,
 ) {
+  void mesh;
   const mapWidth = Math.min(210, width * 0.3);
   const mapHeight = Math.min(292, height * 0.36);
   const margin = Math.max(14, Math.min(width, height) * 0.025);
@@ -2305,30 +2615,13 @@ function drawMiniMap(
   const sy = (value: number) => offsetY + value * scale;
 
   ctx.save();
-  ctx.fillStyle = "rgba(12, 30, 18, 0.78)";
+  ctx.fillStyle = "#163a24";
   ctx.beginPath();
   ctx.roundRect(left, top, mapWidth, mapHeight, 8);
   ctx.fill();
   ctx.clip();
 
-  const compilerPreviewRendered = drawCompiledTerrainPreview(ctx, sx, sy, mesh);
-  if (compilerPreviewRendered) {
-    ctx.globalCompositeOperation = "destination-over";
-    drawCompiledWaterBackdrop(ctx, width, height);
-    ctx.globalCompositeOperation = "source-over";
-  }
-  if (!compilerPreviewRendered) {
-    ctx.fillStyle = worldGrassPattern(ctx, "heavy", sx, sy, scale) ?? heavy.color;
-    ctx.fillRect(left, top, mapWidth, mapHeight);
-    if (renderRules.drawWater) {
-      drawWater(ctx, sx, sy, scale, "mini");
-    }
-    drawMaintainedRough(ctx, sx, sy, scale);
-    drawSurfacePolygons(ctx, sx, sy, scale);
-    if (renderRules.drawScenery) {
-      drawTrees(ctx, sx, sy, scale, "mini");
-    }
-  }
+  drawFlatCourse(ctx, sx, sy, width, height, scale, timestamp, "mini");
   drawPin(ctx, sx, sy, scale);
 
   ctx.fillStyle = "#ffffff";
@@ -2359,16 +2652,16 @@ function drawHud(ctx: CanvasRenderingContext2D, width: number, ball: BallState, 
     : `${club.name}  |  ${fixedSwingMph} mph  |  ${distanceLabel}`;
 
   ctx.save();
-  ctx.fillStyle = "rgba(12, 30, 18, 0.74)";
+  ctx.fillStyle = "#163a24";
   ctx.beginPath();
   ctx.roundRect(left, top, panelWidth, 74, 8);
   ctx.fill();
 
-  ctx.fillStyle = "#f8fff2";
+  ctx.fillStyle = "#fffdf0";
   ctx.font = "700 15px Arial, Helvetica, sans-serif";
   ctx.fillText(courseLabel, left + 14, top + 26);
 
-  ctx.fillStyle = "rgba(248, 255, 242, 0.76)";
+  ctx.fillStyle = "rgba(255, 253, 240, 0.78)";
   ctx.font = "700 13px Arial, Helvetica, sans-serif";
   ctx.fillText(clubLabel, left + 14, top + 48);
   ctx.fillText(`${remainingYards.toFixed(0)} yd to pin`, left + 14, top + 66);
@@ -2471,32 +2764,9 @@ export function GolfinPrototype() {
         : 0;
 
     ctx.clearRect(0, 0, width, height);
-    const useCompiledPreview =
-      showingOverview ||
-      currentHoleState === "celebrating" ||
-      currentHoleState === "complete" ||
-      !terrainAssetsReady();
-    const compilerPreviewRendered = useCompiledPreview
-      ? drawCompiledTerrainPreview(ctx, sx, sy, terrainMeshRef.current)
-      : false;
-    const terrainRendered = compilerPreviewRendered
-      ? false
-      : renderTerrainWebGl(terrainCanvasRef.current, terrainMeshRef.current, camera, width, height, dpr, timestamp);
-
-    if (compilerPreviewRendered) {
-      clearTerrainCanvas(terrainCanvasRef.current, width, height, dpr);
-      ctx.globalCompositeOperation = "destination-over";
-      drawCompiledWaterBackdrop(ctx, width, height);
-      ctx.globalCompositeOperation = "source-over";
-      drawAtmosphere(ctx, width, height);
-      drawPin(ctx, sx, sy, camera.zoom);
-    } else if (terrainRendered) {
-      drawAtmosphere(ctx, width, height);
-      drawPin(ctx, sx, sy, camera.zoom);
-    } else {
-      clearTerrainCanvas(terrainCanvasRef.current, width, height, dpr);
-      drawGrass(ctx, sx, sy, width, height, camera.zoom, timestamp);
-    }
+    clearTerrainCanvas(terrainCanvasRef.current, width, height, dpr);
+    drawFlatCourse(ctx, sx, sy, width, height, camera.zoom, timestamp);
+    drawPin(ctx, sx, sy, camera.zoom);
     if (currentHoleState === "playing") {
       drawTrail(ctx, sx, sy, camera.zoom, trailRef.current);
       drawAimGhost(ctx, sx, sy, camera.zoom, ball, selectedClubRef.current);
@@ -2508,7 +2778,7 @@ export function GolfinPrototype() {
       drawOverviewMarker(ctx, sx, sy, camera.zoom, ball);
     }
     if (currentHoleState === "playing") {
-      drawMiniMap(ctx, width, height, ball, terrainMeshRef.current);
+      drawMiniMap(ctx, width, height, ball, terrainMeshRef.current, timestamp);
       drawHud(ctx, width, ball, selectedClubRef.current);
     }
   }, []);

@@ -33,7 +33,7 @@ button {
 }
 
 .physics-stage {
-  background: #2f7f44;
+  background: #6eb1c2;
   height: 100dvh;
   overflow: hidden;
   position: relative;
@@ -74,10 +74,10 @@ button {
 .club-option {
   -webkit-tap-highlight-color: transparent;
   align-items: center;
-  background: rgba(12, 30, 18, 0.66);
-  border: 1px solid rgba(248, 255, 242, 0.12);
+  background: #163a24;
+  border: 2px solid rgba(255, 255, 245, 0.16);
   border-radius: 8px;
-  color: rgba(248, 255, 242, 0.78);
+  color: rgba(255, 255, 245, 0.82);
   cursor: pointer;
   display: flex;
   flex-direction: column;
@@ -90,9 +90,9 @@ button {
 }
 
 .club-option.is-active {
-  background: #f8fff2;
-  border-color: #f8fff2;
-  color: #183520;
+  background: #fffdf0;
+  border-color: #fffdf0;
+  color: #163a24;
 }
 
 .club-option:disabled {
@@ -115,12 +115,12 @@ button {
 .physics-swing {
   -webkit-tap-highlight-color: transparent;
   align-items: center;
-  background: #f8fff2;
-  border: 0;
+  background: #fffdf0;
+  border: 2px solid rgba(22, 58, 36, 0.18);
   border-radius: 999px;
   bottom: max(26px, env(safe-area-inset-bottom));
-  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.28);
-  color: #183520;
+  box-shadow: 0 8px 0 rgba(22, 58, 36, 0.28);
+  color: #163a24;
   cursor: pointer;
   display: inline-flex;
   font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
@@ -189,7 +189,7 @@ button {
 
 .hole-complete {
   align-items: center;
-  background: #2f7f44;
+  background: #1f5631;
   display: flex;
   inset: 0;
   justify-content: center;
