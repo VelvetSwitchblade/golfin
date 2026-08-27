@@ -2245,7 +2245,7 @@ function drawFlatCourse(
 ) {
   drawFlatWaterField(ctx, width, height);
   drawFlatIsland(ctx, sx, sy, scale);
-  drawFlatSurfaces(ctx, sx, sy, scale, detail);
+  drawFlatSurfaces(ctx, sx, sy, width, height, scale, detail);
   drawShorelineRipples(ctx, sx, sy, scale, timestamp, detail);
 }
 
@@ -2319,6 +2319,8 @@ function drawFlatSurfaces(
   ctx: CanvasRenderingContext2D,
   sx: (value: number) => number,
   sy: (value: number) => number,
+  width: number,
+  height: number,
   scale: number,
   detail: "full" | "mini",
 ) {
@@ -2326,32 +2328,151 @@ function drawFlatSurfaces(
 
   ctx.save();
   for (const type of drawOrder) {
-    for (const surface of course.surfaces.filter((item) => item.type === type)) {
-      traceSurface(ctx, surface, sx, sy);
-      ctx.fillStyle = flatColors[type];
-      ctx.fill();
+    const surfaces = course.surfaces.filter((item) => item.type === type);
+    if (surfaces.length === 0) {
+      continue;
+    }
 
-      if (type === "fairway") {
-        drawFlatFairwayLines(ctx, surface, sx, sy, scale, detail);
-      }
+    drawFlatSurfaceLayerEdge(ctx, surfaces, sx, sy, width, height, scale, type, detail);
+    drawFlatSurfaceLayer(ctx, surfaces, sx, sy, type);
 
-      traceSurface(ctx, surface, sx, sy);
-      ctx.strokeStyle =
-        type === "bunker"
-          ? "rgba(99, 75, 37, 0.2)"
-          : type === "water"
-            ? "rgba(12, 79, 93, 0.28)"
-            : "rgba(13, 46, 24, 0.18)";
-      ctx.lineWidth = Math.max(1, 1.6 * scale);
-      ctx.stroke();
+    if (type === "fairway") {
+      drawFlatFairwayLayerLines(ctx, surfaces, sx, sy, scale, detail);
     }
   }
   ctx.restore();
 }
 
-function drawFlatFairwayLines(
+function drawFlatSurfaceLayer(
   ctx: CanvasRenderingContext2D,
-  surface: CourseSurface,
+  surfaces: CourseSurface[],
+  sx: (value: number) => number,
+  sy: (value: number) => number,
+  type: CourseSurfaceName,
+) {
+  ctx.save();
+  ctx.fillStyle = flatColors[type];
+  traceSurfaceLayer(ctx, surfaces, sx, sy);
+  ctx.fill();
+  ctx.restore();
+}
+
+function traceSurfaceLayer(
+  ctx: CanvasRenderingContext2D,
+  surfaces: CourseSurface[],
+  sx: (value: number) => number,
+  sy: (value: number) => number,
+) {
+  ctx.beginPath();
+  for (const surface of surfaces) {
+    const points = normalizedPolygon(surface.points);
+
+    if (points.length < 3) {
+      points.forEach(([x, y], index) => {
+        if (index === 0) {
+          ctx.moveTo(sx(x), sy(y));
+        } else {
+          ctx.lineTo(sx(x), sy(y));
+        }
+      });
+      ctx.closePath();
+      continue;
+    }
+
+    const first = points[0];
+    const last = points[points.length - 1];
+    const start: [number, number] = [(first[0] + last[0]) / 2, (first[1] + last[1]) / 2];
+    ctx.moveTo(sx(start[0]), sy(start[1]));
+
+    points.forEach((point, index) => {
+      const next = points[(index + 1) % points.length];
+      const midpoint: [number, number] = [(point[0] + next[0]) / 2, (point[1] + next[1]) / 2];
+      ctx.quadraticCurveTo(sx(point[0]), sy(point[1]), sx(midpoint[0]), sy(midpoint[1]));
+    });
+    ctx.closePath();
+  }
+}
+
+function createSurfaceLayerMask(
+  surfaces: CourseSurface[],
+  sx: (value: number) => number,
+  sy: (value: number) => number,
+  width: number,
+  height: number,
+) {
+  const pixelRatio = typeof window === "undefined" ? 1 : window.devicePixelRatio || 1;
+  const mask = document.createElement("canvas");
+  mask.width = Math.max(1, Math.ceil(width * pixelRatio));
+  mask.height = Math.max(1, Math.ceil(height * pixelRatio));
+  const maskCtx = mask.getContext("2d");
+  if (!maskCtx) {
+    return null;
+  }
+
+  maskCtx.scale(pixelRatio, pixelRatio);
+  maskCtx.fillStyle = "#ffffff";
+  traceSurfaceLayer(maskCtx, surfaces, sx, sy);
+  maskCtx.fill();
+
+  return mask;
+}
+
+function drawFlatSurfaceLayerEdge(
+  ctx: CanvasRenderingContext2D,
+  surfaces: CourseSurface[],
+  sx: (value: number) => number,
+  sy: (value: number) => number,
+  width: number,
+  height: number,
+  scale: number,
+  type: CourseSurfaceName,
+  detail: "full" | "mini",
+) {
+  const mask = createSurfaceLayerMask(surfaces, sx, sy, width, height);
+  if (!mask) {
+    return;
+  }
+
+  const edgeWidth = Math.max(1, (detail === "mini" ? 1.2 : 2.2) * scale);
+  const color =
+    type === "bunker"
+      ? "rgba(99, 75, 37, 0.22)"
+      : type === "water"
+        ? "rgba(12, 79, 93, 0.26)"
+        : "rgba(13, 46, 24, 0.2)";
+  const offsets: Array<[number, number]> = [
+    [-edgeWidth, 0],
+    [edgeWidth, 0],
+    [0, -edgeWidth],
+    [0, edgeWidth],
+    [-edgeWidth * 0.7, -edgeWidth * 0.7],
+    [edgeWidth * 0.7, -edgeWidth * 0.7],
+    [-edgeWidth * 0.7, edgeWidth * 0.7],
+    [edgeWidth * 0.7, edgeWidth * 0.7],
+  ];
+  const edge = document.createElement("canvas");
+  edge.width = mask.width;
+  edge.height = mask.height;
+  const edgeCtx = edge.getContext("2d");
+  if (!edgeCtx) {
+    return;
+  }
+
+  edgeCtx.drawImage(mask, 0, 0);
+  edgeCtx.globalCompositeOperation = "source-in";
+  edgeCtx.fillStyle = color;
+  edgeCtx.fillRect(0, 0, edge.width, edge.height);
+
+  ctx.save();
+  for (const [offsetX, offsetY] of offsets) {
+    ctx.drawImage(edge, offsetX, offsetY, width, height);
+  }
+  ctx.restore();
+}
+
+function drawFlatFairwayLayerLines(
+  ctx: CanvasRenderingContext2D,
+  surfaces: CourseSurface[],
   sx: (value: number) => number,
   sy: (value: number) => number,
   scale: number,
@@ -2362,7 +2483,7 @@ function drawFlatFairwayLines(
   }
 
   ctx.save();
-  traceSurface(ctx, surface, sx, sy);
+  traceSurfaceLayer(ctx, surfaces, sx, sy);
   ctx.clip();
   ctx.strokeStyle = "rgba(231, 255, 185, 0.18)";
   ctx.lineWidth = Math.max(4, 8 * scale);
