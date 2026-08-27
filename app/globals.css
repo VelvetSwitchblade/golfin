@@ -670,3 +670,236 @@ button {
     display: none;
   }
 }
+
+.creator-shell {
+  background: #6eb1c2;
+  color: #fffdf0;
+  display: grid;
+  grid-template-columns: minmax(290px, 340px) 1fr;
+  height: 100dvh;
+  overflow: hidden;
+  width: 100vw;
+}
+
+.creator-sidebar {
+  background: #163a24;
+  border-right: 2px solid rgba(255, 253, 240, 0.16);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow: auto;
+  padding: 18px;
+}
+
+.creator-kicker {
+  color: rgba(255, 253, 240, 0.58);
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  margin: 0 0 5px;
+  text-transform: uppercase;
+}
+
+.creator-sidebar h1,
+.creator-sidebar h2 {
+  font-size: 1.35rem;
+  line-height: 1;
+  margin: 0;
+}
+
+.creator-sidebar h2 {
+  font-size: 0.92rem;
+}
+
+.creator-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.creator-panel label {
+  color: rgba(255, 253, 240, 0.72);
+  display: flex;
+  flex-direction: column;
+  font-size: 0.72rem;
+  font-weight: 900;
+  gap: 5px;
+  text-transform: uppercase;
+}
+
+.creator-panel input {
+  background: #fffdf0;
+  border: 0;
+  border-radius: 6px;
+  color: #163a24;
+  font: 800 0.9rem var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  min-height: 38px;
+  padding: 0 10px;
+}
+
+.creator-panel input[type="range"] {
+  accent-color: #82bf58;
+  padding: 0;
+}
+
+.creator-field-row {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 1fr 0.8fr 1fr;
+}
+
+.creator-tool-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.creator-tool,
+.creator-actions button,
+.creator-draft-list button {
+  align-items: center;
+  background: #214d31;
+  border: 2px solid rgba(255, 253, 240, 0.14);
+  border-radius: 8px;
+  color: #fffdf0;
+  cursor: pointer;
+  display: flex;
+  font: 900 0.78rem var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  gap: 8px;
+  min-height: 42px;
+  padding: 0 10px;
+}
+
+.creator-tool.is-active,
+.creator-draft-list button.is-active {
+  background: #fffdf0;
+  border-color: #fffdf0;
+  color: #163a24;
+}
+
+.creator-swatch {
+  border-radius: 999px;
+  display: inline-block;
+  flex: 0 0 auto;
+  height: 14px;
+  width: 14px;
+}
+
+.creator-swatch-fairway {
+  background: #82bf58;
+}
+
+.creator-swatch-green {
+  background: #b8dd75;
+}
+
+.creator-swatch-tee {
+  background: #8dcc63;
+}
+
+.creator-swatch-bunker {
+  background: #dbc076;
+}
+
+.creator-swatch-water {
+  background: #6eb1c2;
+}
+
+.creator-swatch-erase {
+  background: #fffdf0;
+}
+
+.creator-swatch-teePoint {
+  background: #163a24;
+  border: 2px solid #fffdf0;
+}
+
+.creator-swatch-pinPoint {
+  background: #e94b42;
+}
+
+.creator-actions {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.creator-actions button {
+  justify-content: center;
+}
+
+.creator-actions .creator-submit {
+  background: #fffdf0;
+  color: #163a24;
+}
+
+.creator-status {
+  color: rgba(255, 253, 240, 0.68);
+  font-size: 0.78rem;
+  font-weight: 800;
+  margin: 0;
+}
+
+.creator-draft-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.creator-draft-list button {
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 3px;
+  justify-content: center;
+}
+
+.creator-draft-list span {
+  font-size: 0.68rem;
+  opacity: 0.68;
+}
+
+.creator-canvas-wrap {
+  align-items: center;
+  display: flex;
+  justify-content: center;
+  min-height: 0;
+  min-width: 0;
+  padding: 18px;
+}
+
+.creator-canvas {
+  background: #1f5631;
+  border: 2px solid rgba(22, 58, 36, 0.22);
+  border-radius: 8px;
+  box-shadow: 0 12px 0 rgba(22, 58, 36, 0.2);
+  display: block;
+  height: min(100%, 920px);
+  max-height: calc(100dvh - 36px);
+  max-width: calc(100vw - 380px);
+  touch-action: none;
+  width: min(100%, 662px);
+}
+
+@media (max-width: 760px) {
+  .creator-shell {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+  }
+
+  .creator-sidebar {
+    border-bottom: 2px solid rgba(255, 253, 240, 0.16);
+    border-right: 0;
+    max-height: 44dvh;
+  }
+
+  .creator-canvas-wrap {
+    padding: 12px;
+  }
+
+  .creator-canvas {
+    height: 100%;
+    max-height: none;
+    max-width: none;
+    width: 100%;
+  }
+}

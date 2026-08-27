@@ -96,3 +96,14 @@ test("server-renders the course inspector shell", async () => {
   assert.match(html, /<title>Golfin Course Inspector<\/title>/i);
   assert.match(html, /Loading compiled hole package/);
 });
+
+test("server-renders the course creator shell", async () => {
+  const response = await render("/creator");
+  assert.equal(response.status, 200);
+
+  const html = await response.text();
+  assert.match(html, /<title>Golfin Course Creator<\/title>/i);
+  assert.match(html, /Course Creator/);
+  assert.match(html, /Save Draft/);
+  assert.match(html, /Submit/);
+});
