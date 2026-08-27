@@ -75,6 +75,7 @@ type SurfaceEmbossRule = {
 type TerrainTextureSet = {
   masks: WebGLTexture;
   shadow: WebGLTexture;
+  waterMask: WebGLTexture;
   heavyGrass: WebGLTexture;
   roughGrass: WebGLTexture;
   fairwayGrass: WebGLTexture;
@@ -128,6 +129,7 @@ type TerrainWebGlState = {
   uniforms: {
     masks: WebGLUniformLocation | null;
     shadow: WebGLUniformLocation | null;
+    waterMask: WebGLUniformLocation | null;
     heavyGrass: WebGLUniformLocation | null;
     roughGrass: WebGLUniformLocation | null;
     fairwayGrass: WebGLUniformLocation | null;
@@ -546,8 +548,9 @@ const terrainDebugSrc = `${courseAssetBase}/package/holes/01/terrain-debug.json`
 const compiledTerrainPreviewSrc = `${courseAssetBase}/package/holes/01/render/terrain-land-preview.png`;
 const compiledContextWaterFillSrc = `${courseAssetBase}/package/holes/01/render/context-water-fill.png`;
 const terrainAssetSources = {
-  masks: `${courseAssetBase}/masks.png`,
-  shadow: `${courseAssetBase}/shadow.png`,
+  masks: `${courseAssetBase}/package/holes/01/render/material-mask.png`,
+  shadow: `${courseAssetBase}/package/holes/01/render/terrain-light.png`,
+  waterMask: `${courseAssetBase}/package/holes/01/render/context-water-mask.png`,
   heavyGrass: grassTextureSpecs.heavy.albedoSrc,
   roughGrass: grassTextureSpecs.rough.albedoSrc,
   fairwayGrass: grassTextureSpecs.fairway.albedoSrc,
@@ -851,6 +854,7 @@ function drawCompiledTerrainPreview(
 
   ctx.save();
   ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
   ctx.drawImage(image, sx(minX), sy(minY), sx(maxX) - sx(minX), sy(maxY) - sy(minY));
   ctx.restore();
   return true;
@@ -878,7 +882,7 @@ function drawCompiledWaterBackdrop(ctx: CanvasRenderingContext2D, width: number,
 function createTerrainWebGlState(canvas: HTMLCanvasElement, mesh: CompiledTerrainMesh) {
   const gl = canvas.getContext("webgl", {
     alpha: false,
-    antialias: false,
+    antialias: true,
     depth: false,
     stencil: false,
   });
@@ -916,6 +920,7 @@ function createTerrainWebGlState(canvas: HTMLCanvasElement, mesh: CompiledTerrai
 
     uniform sampler2D u_masks;
     uniform sampler2D u_shadow;
+    uniform sampler2D u_waterMask;
     uniform sampler2D u_heavyGrass;
     uniform sampler2D u_roughGrass;
     uniform sampler2D u_fairwayGrass;
@@ -987,16 +992,17 @@ function createTerrainWebGlState(canvas: HTMLCanvasElement, mesh: CompiledTerrai
 
     void main() {
       vec2 world = v_world;
-      vec2 uv = vec2(world.x / u_worldSize.x, world.y / u_worldSize.y);
+      vec2 uv = clamp((world - u_meshBounds.xy) / max(vec2(0.001), u_meshBounds.zw - u_meshBounds.xy), 0.0, 1.0);
       vec4 masks = texture2D(u_masks, uv);
       vec4 aux = texture2D(u_shadow, uv);
+      float contextWater = texture2D(u_waterMask, uv).r;
       float rough = masks.r;
       float fairway = masks.g;
       float green = masks.b;
       float bunker = masks.a;
-      float tee = aux.b;
-      float water = max(aux.g, surfaceIs(6.0));
-      float edge = aux.a;
+      float tee = surfaceIs(4.0);
+      float water = max(max(contextWater, surfaceIs(6.0)), 1.0 - step(0.001, min(min(uv.x, uv.y), min(1.0 - uv.x, 1.0 - uv.y))));
+      float edge = 0.0;
       float feature = clamp(rough + fairway + green + bunker + tee + water, 0.0, 1.0);
       float normalizedHeight = clamp((v_elevation - u_heightRange.x) / max(0.001, u_heightRange.y - u_heightRange.x), 0.0, 1.0);
       float boundsDistance = min(min(world.x - u_meshBounds.x, u_meshBounds.z - world.x), min(world.y - u_meshBounds.y, u_meshBounds.w - world.y));
@@ -1031,11 +1037,12 @@ function createTerrainWebGlState(canvas: HTMLCanvasElement, mesh: CompiledTerrai
 
   const masks = createTerrainTexture(gl, terrainImage(terrainAssetSources.masks));
   const shadow = createTerrainTexture(gl, terrainImage(terrainAssetSources.shadow));
+  const waterMask = createTerrainTexture(gl, terrainImage(terrainAssetSources.waterMask));
   const heavyGrass = createTerrainTexture(gl, terrainImage(terrainAssetSources.heavyGrass), true);
   const roughGrass = createTerrainTexture(gl, terrainImage(terrainAssetSources.roughGrass), true);
   const fairwayGrass = createTerrainTexture(gl, terrainImage(terrainAssetSources.fairwayGrass), true);
   const greenGrass = createTerrainTexture(gl, terrainImage(terrainAssetSources.greenGrass), true);
-  if (!masks || !shadow || !heavyGrass || !roughGrass || !fairwayGrass || !greenGrass) {
+  if (!masks || !shadow || !waterMask || !heavyGrass || !roughGrass || !fairwayGrass || !greenGrass) {
     return null;
   }
 
@@ -1044,7 +1051,7 @@ function createTerrainWebGlState(canvas: HTMLCanvasElement, mesh: CompiledTerrai
     gl,
     program,
     mesh: gpuMesh,
-    textures: { masks, shadow, heavyGrass, roughGrass, fairwayGrass, greenGrass },
+    textures: { masks, shadow, waterMask, heavyGrass, roughGrass, fairwayGrass, greenGrass },
     attributes: {
       world: gl.getAttribLocation(program, "a_world"),
       elevation: gl.getAttribLocation(program, "a_elevation"),
@@ -1054,6 +1061,7 @@ function createTerrainWebGlState(canvas: HTMLCanvasElement, mesh: CompiledTerrai
     uniforms: {
       masks: gl.getUniformLocation(program, "u_masks"),
       shadow: gl.getUniformLocation(program, "u_shadow"),
+      waterMask: gl.getUniformLocation(program, "u_waterMask"),
       heavyGrass: gl.getUniformLocation(program, "u_heavyGrass"),
       roughGrass: gl.getUniformLocation(program, "u_roughGrass"),
       fairwayGrass: gl.getUniformLocation(program, "u_fairwayGrass"),
@@ -1201,6 +1209,7 @@ function renderTerrainWebGl(
   const textureEntries: Array<[WebGLTexture, WebGLUniformLocation | null]> = [
     [textures.masks, uniforms.masks],
     [textures.shadow, uniforms.shadow],
+    [textures.waterMask, uniforms.waterMask],
     [textures.heavyGrass, uniforms.heavyGrass],
     [textures.roughGrass, uniforms.roughGrass],
     [textures.fairwayGrass, uniforms.fairwayGrass],
@@ -2462,7 +2471,14 @@ export function GolfinPrototype() {
         : 0;
 
     ctx.clearRect(0, 0, width, height);
-    const compilerPreviewRendered = drawCompiledTerrainPreview(ctx, sx, sy, terrainMeshRef.current);
+    const useCompiledPreview =
+      showingOverview ||
+      currentHoleState === "celebrating" ||
+      currentHoleState === "complete" ||
+      !terrainAssetsReady();
+    const compilerPreviewRendered = useCompiledPreview
+      ? drawCompiledTerrainPreview(ctx, sx, sy, terrainMeshRef.current)
+      : false;
     const terrainRendered = compilerPreviewRendered
       ? false
       : renderTerrainWebGl(terrainCanvasRef.current, terrainMeshRef.current, camera, width, height, dpr, timestamp);
@@ -2478,6 +2494,7 @@ export function GolfinPrototype() {
       drawAtmosphere(ctx, width, height);
       drawPin(ctx, sx, sy, camera.zoom);
     } else {
+      clearTerrainCanvas(terrainCanvasRef.current, width, height, dpr);
       drawGrass(ctx, sx, sy, width, height, camera.zoom, timestamp);
     }
     if (currentHoleState === "playing") {
