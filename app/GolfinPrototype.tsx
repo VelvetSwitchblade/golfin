@@ -43,13 +43,9 @@ type WaterEdgeDetail = {
 
 type ShorelineRipple = {
   id: number;
-  x: number;
-  y: number;
-  tangentX: number;
-  tangentY: number;
+  points: Array<[number, number]>;
   normalX: number;
   normalY: number;
-  length: number;
   travel: number;
   phase: number;
 };
@@ -1529,59 +1525,108 @@ function createWaterEdgeDetails() {
 
 function createShorelineRipples() {
   const ripples: ShorelineRipple[] = [];
-  const islandSources = course.surfaces.filter((surface) => surface.type !== "bunker");
+  const step = 14;
+  const margin = roughCollarWidth * 2.1;
+  const contourDistance = roughCollarWidth * 1.675;
+  let nextId = 0;
 
-  for (const surface of islandSources) {
-    const points = normalizedPolygon(surface.points);
-    const centroid = polygonCentroid(points);
+  for (let y = -margin; y < worldHeight + margin; y += step) {
+    for (let x = -margin; x < worldWidth + margin; x += step) {
+      const corners: Array<{ x: number; y: number; value: number }> = [
+        { x, y, value: islandCoreDistance(x, y) - contourDistance },
+        { x: x + step, y, value: islandCoreDistance(x + step, y) - contourDistance },
+        { x: x + step, y: y + step, value: islandCoreDistance(x + step, y + step) - contourDistance },
+        { x, y: y + step, value: islandCoreDistance(x, y + step) - contourDistance },
+      ];
+      const intersections: Array<[number, number]> = [];
 
-    for (let edgeIndex = 0; edgeIndex < points.length; edgeIndex += 1) {
-      const start = points[edgeIndex];
-      const end = points[(edgeIndex + 1) % points.length];
-      const dx = end[0] - start[0];
-      const dy = end[1] - start[1];
-      const edgeLength = Math.hypot(dx, dy);
-      if (edgeLength < 14) {
+      for (let edgeIndex = 0; edgeIndex < corners.length; edgeIndex += 1) {
+        const start = corners[edgeIndex];
+        const end = corners[(edgeIndex + 1) % corners.length];
+        if ((start.value < 0 && end.value < 0) || (start.value > 0 && end.value > 0)) {
+          continue;
+        }
+        if (start.value === end.value) {
+          continue;
+        }
+        const amount = clamp(-start.value / (end.value - start.value), 0, 1);
+        intersections.push([
+          start.x + (end.x - start.x) * amount,
+          start.y + (end.y - start.y) * amount,
+        ]);
+      }
+
+      if (intersections.length < 2) {
         continue;
       }
 
-      const count = Math.max(1, Math.floor(edgeLength / 24));
-      const tangentX = dx / edgeLength;
-      const tangentY = dy / edgeLength;
-
-      for (let sampleIndex = 0; sampleIndex < count; sampleIndex += 1) {
-        const seed = surface.id * 0.017 + edgeIndex * 9.31 + sampleIndex * 2.93;
-        if (seededNoise(seed) < 0.46) {
+      for (let index = 0; index < intersections.length - 1; index += 2) {
+        const start = intersections[index];
+        const end = intersections[index + 1];
+        const length = Math.hypot(end[0] - start[0], end[1] - start[1]);
+        if (length < 3) {
           continue;
         }
 
-        const t = (sampleIndex + 0.22 + seededNoise(seed + 1.2) * 0.56) / count;
-        const edgeX = start[0] + dx * t;
-        const edgeY = start[1] + dy * t;
-        const awayX = edgeX - centroid.x;
-        const awayY = edgeY - centroid.y;
-        const awayLength = Math.hypot(awayX, awayY) || 1;
-        const normalX = awayX / awayLength;
-        const normalY = awayY / awayLength;
-        const shorelineOffset = roughCollarWidth * 1.42 + 12 + seededNoise(seed + 2.7) * 11;
+        const midX = (start[0] + end[0]) * 0.5;
+        const midY = (start[1] + end[1]) * 0.5;
+        const seed = nextId * 4.37 + midX * 0.07 + midY * 0.013;
+        if (seededNoise(seed) < 0.42) {
+          nextId += 1;
+          continue;
+        }
+
+        const normal = islandOutwardNormal(midX, midY);
+        const baseOffset = 5 + seededNoise(seed + 1.9) * 8;
+        const points = [start, end].map(([pointX, pointY]) => [
+          Number((pointX + normal.x * baseOffset).toFixed(2)),
+          Number((pointY + normal.y * baseOffset).toFixed(2)),
+        ] as [number, number]);
 
         ripples.push({
           id: ripples.length,
-          x: Number((edgeX + normalX * shorelineOffset).toFixed(2)),
-          y: Number((edgeY + normalY * shorelineOffset).toFixed(2)),
-          tangentX,
-          tangentY,
-          normalX,
-          normalY,
-          length: Number((16 + seededNoise(seed + 3.1) * 34).toFixed(2)),
-          travel: Number((8 + seededNoise(seed + 4.4) * 16).toFixed(2)),
+          points,
+          normalX: normal.x,
+          normalY: normal.y,
+          travel: Number((7 + seededNoise(seed + 4.4) * 15).toFixed(2)),
           phase: seededNoise(seed + 5.9),
         });
+        nextId += 1;
       }
     }
   }
 
   return ripples;
+}
+
+function islandCoreDistance(x: number, y: number) {
+  const islandSources = course.surfaces.filter((surface) => surface.type !== "bunker");
+  const surfaceDistance = distanceToSurfaces(x, y, islandSources);
+  const lineDistance = distanceToPolyline(x, y, course.holeLine);
+
+  return Math.min(surfaceDistance, lineDistance);
+}
+
+function distanceToPolyline(x: number, y: number, points: Array<[number, number]>) {
+  if (points.length < 2) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  let closest = Number.POSITIVE_INFINITY;
+  for (let index = 0; index < points.length - 1; index += 1) {
+    closest = Math.min(closest, distanceToSegment(x, y, points[index], points[index + 1]));
+  }
+
+  return closest;
+}
+
+function islandOutwardNormal(x: number, y: number) {
+  const sample = 1.5;
+  const dx = islandCoreDistance(x + sample, y) - islandCoreDistance(x - sample, y);
+  const dy = islandCoreDistance(x, y + sample) - islandCoreDistance(x, y - sample);
+  const length = Math.hypot(dx, dy) || 1;
+
+  return { x: dx / length, y: dy / length };
 }
 
 const trees = createTreeLine();
@@ -2155,14 +2200,18 @@ function drawFlatBunkerDetail(
   }
 
   const center = polygonCentroid(surface.points);
+  const points = normalizedPolygon(surface.points);
   ctx.save();
   traceSurface(ctx, surface, sx, sy);
   ctx.clip();
   ctx.strokeStyle = "rgba(139, 102, 50, 0.28)";
   ctx.lineWidth = Math.max(0.8, 1.25 * scale);
-  for (let i = -2; i <= 2; i += 1) {
-    ctx.beginPath();
-    ctx.ellipse(sx(center.x), sy(center.y), (16 + i * 6) * scale, (8 + i * 3) * scale, -0.65, 0, Math.PI * 2);
+  for (const amount of [0.28, 0.43, 0.58, 0.73]) {
+    const ring = points.map(([x, y]) => [
+      center.x + (x - center.x) * amount,
+      center.y + (y - center.y) * amount,
+    ] as [number, number]);
+    tracePolygon(ctx, ring, sx, sy);
     ctx.stroke();
   }
   ctx.restore();
@@ -2191,14 +2240,20 @@ function drawShorelineRipples(
     const eased = 1 - Math.pow(1 - progress / 0.62, 2);
     const alpha = (1 - eased) * (detail === "mini" ? 0.24 : 0.42);
     const drift = ripple.travel * eased;
-    const half = ripple.length * (0.5 + eased * 0.15) * 0.5;
-    const centerX = ripple.x + ripple.normalX * drift;
-    const centerY = ripple.y + ripple.normalY * drift;
+    const points = ripple.points.map(([x, y]) => [
+      x + ripple.normalX * drift,
+      y + ripple.normalY * drift,
+    ] as [number, number]);
 
     ctx.strokeStyle = `rgba(255, 255, 245, ${alpha})`;
     ctx.beginPath();
-    ctx.moveTo(sx(centerX - ripple.tangentX * half), sy(centerY - ripple.tangentY * half));
-    ctx.lineTo(sx(centerX + ripple.tangentX * half), sy(centerY + ripple.tangentY * half));
+    points.forEach(([x, y], index) => {
+      if (index === 0) {
+        ctx.moveTo(sx(x), sy(y));
+      } else {
+        ctx.lineTo(sx(x), sy(y));
+      }
+    });
     ctx.stroke();
   }
 
